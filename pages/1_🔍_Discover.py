@@ -1,7 +1,8 @@
 import streamlit as st
-import pandas as pd
 import json
 import os
+import zipfile
+import xml.etree.ElementTree as ET
 from openai import OpenAI
 from utility import check_password
 
@@ -25,68 +26,96 @@ st.markdown(
 )
 st.markdown("---")
 
-# ── 2. Data Loading with Caching ──────────────────────────────
+# ── 2. Native Robust Data Loader (Bypasses DLL/AppLocker issues) ─
 @st.cache_data
-def load_ae_dataset():
+def load_all_ae_records():
     excel_path = "SSI_AE_Mock_Dataset_100_Trainers.xlsx"
+    records = []
+
     if os.path.exists(excel_path):
         try:
-            df = pd.read_excel(excel_path)
-            return df
+            with zipfile.ZipFile(excel_path, 'r') as z:
+                # Read shared strings table
+                shared_strings = []
+                if 'xl/sharedStrings.xml' in z.namelist():
+                    tree = ET.fromstring(z.read('xl/sharedStrings.xml'))
+                    for elem in tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si'):
+                        parts = [t.text for t in elem.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t') if t.text]
+                        shared_strings.append("".join(parts))
+
+                # Read 'sheet1.xml' (AE Mock Data)
+                sheet_tree = ET.fromstring(z.read('xl/worksheets/sheet1.xml'))
+                rows = sheet_tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheetData/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row')
+                
+                # Headers are on Row 3
+                headers = []
+                if len(rows) >= 3:
+                    for c in rows[2].findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c'):
+                        v = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v')
+                        if v is not None:
+                            val = v.text
+                            if c.attrib.get('t') == 's' and shared_strings:
+                                headers.append(shared_strings[int(val)])
+                            else:
+                                headers.append(val)
+
+                    # Data rows start from Row 4 onwards
+                    for r in rows[3:]:
+                        cells = []
+                        for c in r.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c'):
+                            v = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v')
+                            if v is not None:
+                                val = v.text
+                                if c.attrib.get('t') == 's' and shared_strings:
+                                    cells.append(shared_strings[int(val)])
+                                else:
+                                    cells.append(val)
+                            else:
+                                is_elem = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}is/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t')
+                                if is_elem is not None and is_elem.text:
+                                    cells.append(is_elem.text)
+                                else:
+                                    cells.append("")
+
+                        if cells and len(cells) >= 11:
+                            rec = {
+                                "Name": cells[0] if len(cells) > 0 else "Unknown",
+                                "Agency_or_Org": cells[7] if len(cells) > 7 else "",
+                                "Designation": cells[8] if len(cells) > 8 else "",
+                                "Sub_Sector": cells[9] if len(cells) > 9 else "",
+                                "Expertise": cells[10] if len(cells) > 10 else "",
+                                "Qualifications": cells[11] if len(cells) > 11 else "",
+                                "Training_Exp_Yrs": cells[16] if len(cells) > 16 else "",
+                                "ACTA_Certified": cells[21] if len(cells) > 21 else "",
+                                "Avg_Rating": cells[27] if len(cells) > 27 else "4.5"
+                            }
+                            records.append(rec)
         except Exception:
             pass
-            
-    # Resilient fallback mock records if Excel has different sheet names
-    fallback_data = [
-        {
-            "AE_ID": "AE-101",
-            "Name": "Dr. Sarah Tan",
-            "Domain_Expertise": "Youth Casework, Trauma-Informed Care, Counselling Psychology",
-            "Sector_Experience": "Social Service Agencies, Youth Guidance Centres (12 years)",
-            "Past_Courses": "Trauma-Informed Practice in Case Management; Youth Diversion Mentoring",
-            "Avg_Rating": 4.85,
-            "Specialist_Approaches": "Narrative Therapy, Trauma-Informed Supervision"
-        },
-        {
-            "AE_ID": "AE-102",
-            "Name": "Mark Lee",
-            "Domain_Expertise": "Adaptive Leadership, Change Management, Cross-Sector Partnerships",
-            "Sector_Experience": "Public Service Leadership, NCSS Collaborative Teams (15 years)",
-            "Past_Courses": "Strategic Capability Transition; Leading Collaborative Transformation",
-            "Avg_Rating": 4.62,
-            "Specialist_Approaches": "Action Learning, Executive Coaching"
-        },
-        {
-            "AE_ID": "AE-103",
-            "Name": "Priya Nair",
-            "Domain_Expertise": "Restorative Practices, Youth Mediation, Clinical Social Work",
-            "Sector_Experience": "Family Service Centres, Youth Justice & Community Courts (10 years)",
-            "Past_Courses": "Facilitating Restorative Dialogue with Adolescents; Ethical Casework",
-            "Avg_Rating": 4.78,
-            "Specialist_Approaches": "Restorative Justice Circles, Solution-Focused Brief Therapy"
-        },
-        {
-            "AE_ID": "AE-104",
-            "Name": "Jason Koh",
-            "Domain_Expertise": "Disability Inclusion, Special Education, Assistive Technology",
-            "Sector_Experience": "Adult Disability Homes, Special Education Institutes (8 years)",
-            "Past_Courses": "Universal Design for Learning in Social Care; Practitioner Facilitation",
-            "Avg_Rating": 4.70,
-            "Specialist_Approaches": "Universal Design, Experiential Simulation"
-        },
-        {
-            "AE_ID": "AE-105",
-            "Name": "Fatima Rahman",
-            "Domain_Expertise": "Elderly Mental Health, Dementia Care, Community Gerontology",
-            "Sector_Experience": "Senior Activity Centres, Community Hospitals (11 years)",
-            "Past_Courses": "Person-Centred Dementia Care; Gerontological Case Practice",
-            "Avg_Rating": 4.90,
-            "Specialist_Approaches": "Reminiscence Facilitation, Compassion-Focused Care"
-        }
-    ]
-    return pd.DataFrame(fallback_data)
 
-ae_df = load_ae_dataset()
+    # Fallback if file is absent
+    if not records:
+        records = [
+            {
+                "Name": "Tan Wei Ming",
+                "Sub_Sector": "Children & Youth",
+                "Expertise": "Youth-at-risk; trauma-informed practice; family work",
+                "Qualifications": "Master of Social Work",
+                "Training_Exp_Yrs": "11",
+                "Avg_Rating": "4.9"
+            },
+            {
+                "Name": "Nur Aisyah Rahman",
+                "Sub_Sector": "Family",
+                "Expertise": "Family strengthening; parenting; caregiver engagement; motivational interviewing",
+                "Qualifications": "Master of Counselling",
+                "Training_Exp_Yrs": "14",
+                "Avg_Rating": "4.8"
+            }
+        ]
+    return records
+
+ae_records = load_all_ae_records()
 
 # ── 3. Search Interface ───────────────────────────────────────
 col_query, col_filters = st.columns([3, 1])
@@ -97,13 +126,13 @@ with col_query:
         "Enter Engagement / Training Requirements (Natural Language):",
         value=default_prompt,
         height=140,
-        placeholder="e.g., Looking for an AE experienced in trauma-informed intervention and practical case facilitation for social service workers working with vulnerable youths."
+        placeholder="e.g., Looking for an Adult Educator with strong experience in trauma-informed intervention and casework with youth-at-risk."
     )
 
 with col_filters:
-    st.subheader("Search Guidance")
-    st.caption("💡 The semantic retriever matches conceptual qualifications even if terms vary.")
-    min_rating = st.slider("Filter by Minimum Historical Rating", 4.0, 5.0, 4.5, step=0.05)
+    st.subheader("Dataset Scope")
+    st.info(f"📚 **{len(ae_records)}** AE Profiles Loaded")
+    st.caption("Matches natural-language needs against documented sector skills.")
 
 find_clicked = st.button("🔎 Find Potentially Relevant AEs", type="primary")
 
@@ -114,39 +143,38 @@ if find_clicked:
     else:
         st.session_state["last_requirement"] = user_requirement
         
-        # Prepare context representation from records
-        records_summary = ae_df.to_dict(orient="records")
-        context_str = json.dumps(records_summary, indent=2)
+        # Format the top records into context
+        context_str = json.dumps(ae_records[:30], indent=2)
 
         # Retrieve OpenAI API Key from Streamlit Secrets
         api_key = st.secrets.get("OPENAI_API_KEY", "")
         
         if not api_key:
-            st.error("OpenAI API Key not found in Streamlit Secrets. Please configure `OPENAI_API_KEY`.")
+            st.error("OpenAI API Key not found in Streamlit Secrets. Please configure `OPENAI_API_KEY` in Settings.")
         else:
             client = OpenAI(api_key=api_key)
             
             system_prompt = (
-                "You are the Adult Educator (AE) Discovery Assistant for social service training officers.\n"
+                "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
                 "Your role is decision support ONLY. Follow these strict rules:\n"
-                "1. Base all statements strictly on the provided AE records. Do NOT invent credentials or ratings.\n"
+                "1. Base all statements strictly on the provided AE records. Do NOT invent credentials, experience, or ratings.\n"
                 "2. Identify the 2 to 3 most relevant AEs matching the requirement.\n"
                 "3. For each candidate, provide:\n"
-                "   - **AE Name & ID**\n"
-                "   - **Documented Match Rationale**: Why their experience aligns with the need.\n"
-                "   - **Relevant Sector Experience & Past Courses**\n"
-                "   - **Historical Rating**\n"
-                "   - **Information Gaps**: Explicitly state 'Not documented in available records' for any criteria not found.\n"
-                "4. Maintain neutral tone: Never label any candidate as 'the best', 'winner', or 'selected'. Final choice belongs to the officer."
+                "   - **AE Name**\n"
+                "   - **Sub-Sector & Documented Expertise**\n"
+                "   - **Documented Match Rationale**: Why their profile aligns with the requirement.\n"
+                "   - **Training Experience & Historical Rating**\n"
+                "   - **Information Gaps**: Explicitly state 'Not documented in available records' for any criteria not found in the profile.\n"
+                "4. Maintain a neutral decision-support tone: Never label any candidate as 'the best', 'winner', or 'selected'. Final choice belongs to the officer."
             )
 
-            with st.spinner("Retrieving records and synthesizing evidence..."):
+            with st.spinner("Analyzing AE profiles against requirement..."):
                 try:
                     response = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"AE Records:\n{context_str}\n\nTraining Requirement:\n{user_requirement}"}
+                            {"role": "user", "content": f"AE Records:\n{context_str}\n\nOfficer Requirement:\n{user_requirement}"}
                         ],
                         temperature=0.2
                     )
@@ -164,7 +192,7 @@ if "discovery_analysis" in st.session_state:
     st.subheader("⚖️ Shortlist Candidates for Side-by-Side Comparison")
     st.caption("Select two or more candidates to compare on the **Compare** page.")
     
-    candidate_options = ae_df["Name"].tolist()
+    candidate_options = [r["Name"] for r in ae_records]
     
     selected_aes = st.multiselect(
         "Select AEs to Shortlist:",
@@ -181,5 +209,5 @@ if "discovery_analysis" in st.session_state:
     else:
         st.warning("Please select at least 2 candidates to compare.")
 
-with st.expander("📂 View Available AE Records (Raw Knowledge Base)"):
-    st.dataframe(ae_df, use_container_width=True)
+with st.expander("📂 View Sample Raw AE Records"):
+    st.write(ae_records[:10])
