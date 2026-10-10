@@ -1,10 +1,13 @@
 import streamlit as st
-
+from utility import check_password
 st.set_page_config(
     page_title="Methodology - AE Discovery Assistant",
     page_icon="🛠️",
     layout="wide"
 )
+
+if not check_password():
+    st.stop()
 
 st.title("🛠️ Methodology & Technical Implementation")
 st.markdown("---")
