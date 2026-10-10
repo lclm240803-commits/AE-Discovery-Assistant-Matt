@@ -1,10 +1,14 @@
 import streamlit as st
+from utility import check_password
 
 st.set_page_config(
     page_title="AE Discovery & Comparison Assistant",
     page_icon="🎓",
     layout="wide"
 )
+# Do not continue if check_password is not True.
+if not check_password():
+    st.stop()
 
 st.title("🎓 Adult Educator Discovery & Comparison Assistant")
 st.subheader("Proof-of-Concept Prototype")
