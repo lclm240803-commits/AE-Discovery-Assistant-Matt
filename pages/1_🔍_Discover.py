@@ -3,6 +3,7 @@ import json
 import os
 import zipfile
 import xml.etree.ElementTree as ET
+import re
 from openai import OpenAI
 from utility import check_password
 
@@ -80,6 +81,7 @@ def load_all_ae_records():
     return records
 
 ae_records = load_all_ae_records()
+candidate_options = [r["Name"] for r in ae_records]
 
 # ── 3. Search & Input Section ─────────────────────────────────
 st.subheader("1. Training Requirement Input")
@@ -122,13 +124,14 @@ if find_clicked:
                 "Your role is decision support ONLY. Follow these strict rules:\n"
                 "1. Base all statements strictly on the provided AE records. Do NOT invent credentials, experience, or ratings.\n"
                 "2. Identify the 2 to 3 most relevant AEs matching the requirement.\n"
-                "3. For each candidate, provide structured points:\n"
-                "   - **Candidate Name & Designation**\n"
-                "   - **Sub-Sector Alignment**\n"
-                "   - **Documented Match Rationale**: Clear reasoning tied to their listed expertise.\n"
-                "   - **Years of Training Experience & Historical Effectiveness Rating**\n"
-                "   - **Information Gaps**: Explicitly state 'Not documented in available records' for any criteria not found in the profile.\n"
-                "4. Maintain a neutral decision-support tone: Never label any candidate as 'the best', 'winner', or 'selected'. Final choice belongs to the officer."
+                "3. For each candidate, format strictly as:\n"
+                "   Candidate X\n"
+                "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
+                "   - **Sub-Sector Alignment**: [Alignment]\n"
+                "   - **Documented Match Rationale**: [Reasoning]\n"
+                "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
+                "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n"
+                "4. Maintain a neutral decision-support tone: Never label any candidate as 'the best' or 'winner'."
             )
 
             with st.spinner("Analyzing AE profiles and synthesizing evidence..."):
@@ -141,7 +144,19 @@ if find_clicked:
                         ],
                         temperature=0.2
                     )
-                    st.session_state["discovery_analysis"] = response.choices[0].message.content
+                    analysis_text = response.choices[0].message.content
+                    st.session_state["discovery_analysis"] = analysis_text
+                    
+                    # Intelligently extract the names matched by the LLM
+                    extracted_names = []
+                    for name in candidate_options:
+                        if name in analysis_text and name not in extracted_names:
+                            extracted_names.append(name)
+                    
+                    # Update shortlisted candidates to the actual AI recommended matches!
+                    if extracted_names:
+                        st.session_state["selected_candidates"] = extracted_names[:3]
+
                 except Exception as e:
                     st.error(f"Error calling LLM: {e}")
 
@@ -158,11 +173,16 @@ if "discovery_analysis" in st.session_state:
     st.subheader("3. Shortlist Candidates for Comparison")
     st.caption("Selected candidates will be carried over to the **2 ⚖️ Compare** page.")
     
-    candidate_options = [r["Name"] for r in ae_records]
+    # Fallback to the AI recommended matches
+    current_shortlist = st.session_state.get("selected_candidates", [])
+    valid_defaults = [name for name in current_shortlist if name in candidate_options]
+    if not valid_defaults:
+        valid_defaults = candidate_options[:2]
+
     selected_aes = st.multiselect(
         "Choose at least 2 Adult Educators to compare side-by-side:",
         options=candidate_options,
-        default=st.session_state.get("selected_candidates", candidate_options[:2])
+        default=valid_defaults
     )
     st.session_state["selected_candidates"] = selected_aes
     
