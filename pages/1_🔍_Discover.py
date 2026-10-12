@@ -150,7 +150,6 @@ if find_clicked:
                     # Intelligently extract names that appear in candidate_options
                     extracted_names = []
                     for name in candidate_options:
-                        # Ensure we don't accidentally match 'Not documented in available records'
                         if name in analysis_text and name not in extracted_names:
                             extracted_names.append(name)
                     
@@ -163,44 +162,40 @@ if find_clicked:
                 except Exception as e:
                     st.error(f"Error calling LLM: {e}")
 
-# ── 5. Render Discovery Results ───────────────────────────────
+# ── 5. Render Discovery Results (If Search Run) ───────────────
 if "discovery_analysis" in st.session_state:
     st.markdown("---")
     st.subheader("2. AI Discovery Analysis & Evidence")
     
     with st.container(border=True):
         st.markdown(st.session_state["discovery_analysis"])
-
-    # Candidate Shortlisting for Compare Page
-    st.markdown("---")
-    st.subheader("3. Shortlist Candidates for Comparison")
-    st.caption("Selected candidates will be carried over to the **2 ⚖️ Compare** page.")
-    
-    current_shortlist = st.session_state.get("selected_candidates", [])
-
-    # Check if the AI found no candidates
-    if not current_shortlist:
-        st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates from the directory below.")
-        selected_aes = st.multiselect(
-            "Manually select Adult Educators to compare (optional):",
-            options=candidate_options,
-            default=[]
-        )
-        st.session_state["selected_candidates"] = selected_aes
-    else:
-        selected_aes = st.multiselect(
-            "Choose at least 2 Adult Educators to compare side-by-side:",
-            options=candidate_options,
-            default=current_shortlist
-        )
-        st.session_state["selected_candidates"] = selected_aes
         
-        if len(selected_aes) >= 2:
-            st.success(f"✅ **{len(selected_aes)} candidates shortlisted!** You can now proceed to the **2 ⚖️ Compare** page in the left sidebar.")
-        else:
-            st.info("ℹ️ Select at least 2 candidates to enable full comparative analysis.")
+    current_shortlist = st.session_state.get("selected_candidates", [])
+    if not current_shortlist:
+        st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
 
-# ── 6. Enhanced Profile Explorer (Natural Cards) ──────────────
+# ── 6. Candidate Shortlisting for Compare Page (Always Visible) ─
+st.markdown("---")
+st.subheader("3. Shortlist Candidates for Comparison")
+st.caption("Selected candidates will be carried over to the **2 ⚖️ Compare** page.")
+
+current_shortlist = st.session_state.get("selected_candidates", [])
+valid_defaults = [name for name in current_shortlist if name in candidate_options]
+
+selected_aes = st.multiselect(
+    "Select at least 2 Adult Educators to compare side-by-side:",
+    options=candidate_options,
+    default=valid_defaults,
+    placeholder="Choose Adult Educators from recommendations or directory..."
+)
+st.session_state["selected_candidates"] = selected_aes
+
+if len(selected_aes) >= 2:
+    st.success(f"✅ **{len(selected_aes)} candidates shortlisted!** You can now proceed to the **2 ⚖️ Compare** page in the left sidebar.")
+else:
+    st.info("ℹ️ Select at least 2 candidates to enable full comparative analysis.")
+
+# ── 7. Enhanced Profile Explorer (Natural Cards) ──────────────
 st.markdown("---")
 with st.expander("👤 Browse Adult Educator Profiles Directory", expanded=False):
     st.caption("Search or preview trainer credentials from the synthetic knowledge base.")
