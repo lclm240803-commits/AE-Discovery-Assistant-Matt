@@ -123,7 +123,6 @@ engagements = load_engagement_history()
 trainer_map = {t["Name"]: t for t in trainers}
 all_names = [t["Name"] for t in trainers]
 
-# Helper to find engagements for a trainer
 def get_trainer_courses(trainer_name):
     matched_courses = []
     for eng in engagements:
@@ -152,13 +151,21 @@ with col_context:
             st.caption("No custom requirement carried from Discover page. You can still select candidates below to compare.")
 
 with col_pick:
-    # Use only what was explicitly shortlisted; do NOT default to arbitrary profiles!
-    default_selection = [name for name in shortlisted if name in all_names]
+    # Initialize compare_picker from persistent selected_candidates if entering page
+    if "compare_picker" not in st.session_state:
+        st.session_state["compare_picker"] = [name for name in shortlisted if name in all_names]
+
+    # Callback syncs any user changes on this page back to persistent session state
+    def sync_compare_candidates():
+        st.session_state["selected_candidates"] = st.session_state["compare_picker"]
+
     selected_aes = st.multiselect(
         "Shortlisted Adult Educators:",
         options=all_names,
-        default=default_selection
+        key="compare_picker",
+        on_change=sync_compare_candidates
     )
+    # Keep persistent state in sync on every run
     st.session_state["selected_candidates"] = selected_aes
 
 # ── 4. Structured Side-by-Side Comparison Matrix ─────────────
