@@ -145,16 +145,19 @@ if find_clicked:
                 "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
                 "Your role is decision support ONLY. Follow these strict rules:\n"
                 "1. Base all statements strictly on the provided AE records. Do NOT invent credentials, experience, or ratings.\n"
-                "2. Identify the 2 to 3 most relevant AEs matching the requirement.\n"
-                "3. If NO candidates match the requirements in the provided records, do NOT recommend or invent any candidates. Under 'Candidate Name & Designation' explicitly write 'Not documented in available records', and clearly state in 'Information Gaps' that no matching candidates exist.\n"
-                "4. For each candidate, format strictly as:\n"
+                "2. If 1 or more candidates match the requirements, identify the 2 to 3 most relevant AEs. Format each strictly as:\n"
                 "   Candidate X\n"
                 "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
                 "   - **Sub-Sector Alignment**: [Alignment]\n"
                 "   - **Documented Match Rationale**: [Reasoning]\n"
                 "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
                 "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n"
-                "5. Maintain a neutral decision-support tone: Never label any candidate as 'the best' or 'winner'."
+                "3. If NO candidates match the requirements in the provided records:\n"
+                "   - Do NOT output 'Candidate 1' or any candidate template.\n"
+                "   - Clearly state that no candidates match the specified criteria.\n"
+                "   - Mention the nearest available profiles in the relevant sub-sector (e.g., maximum training experience available).\n"
+                "   - Explicitly list the unmet criteria under an 'Information Gaps' section.\n"
+                "4. Maintain a neutral decision-support tone: Never label any candidate as 'the best' or 'winner'."
             )
 
             with st.spinner("Analyzing AE profiles and synthesizing evidence..."):
