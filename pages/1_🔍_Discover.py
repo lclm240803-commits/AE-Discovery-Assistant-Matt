@@ -3,7 +3,6 @@ import json
 import os
 import zipfile
 import xml.etree.ElementTree as ET
-import re
 from openai import OpenAI
 from utility import check_password
 
@@ -185,16 +184,22 @@ if find_clicked:
                     analysis_text = response.choices[0].message.content
                     st.session_state["discovery_analysis"] = analysis_text
                     
-                    # Robust candidate name extraction: Matches "Candidate X: [Name]" even with leading numbers
+                    # ── Robust Name Detection ──────────────────────────────
                     extracted_names = []
-                    if "NO_RELEVANT_DOMAIN" not in analysis_text and "Candidate" in analysis_text:
-                        for line in analysis_text.splitlines():
-                            match = re.search(r"Candidate\s+\d+[:\-]\s*([A-Za-z\s]+)", line)
-                            if match:
-                                c_name = match.group(1).strip()
-                                for real_name in candidate_options:
-                                    if real_name.lower() == c_name.lower() and real_name not in extracted_names:
-                                        extracted_names.append(real_name)
+                    # Only search for candidate names if it's a valid domain
+                    if "NO_RELEVANT_DOMAIN" not in analysis_text:
+                        # Find all candidate names that appear in the response, in order of appearance
+                        found_candidates = []
+                        for real_name in candidate_options:
+                            pos = analysis_text.find(real_name)
+                            if pos != -1:
+                                found_candidates.append((pos, real_name))
+                        
+                        # Sort by their appearance position in the text
+                        found_candidates.sort(key=lambda x: x[0])
+                        for _, name in found_candidates:
+                            if name not in extracted_names:
+                                extracted_names.append(name)
                     
                     # Store AI suggested candidates
                     st.session_state["ai_suggested_candidates"] = extracted_names[:3]
@@ -222,7 +227,7 @@ if "discovery_analysis" in st.session_state:
             st.markdown("#### 🎯 Would you like to select the shortlisted candidates for comparison?")
             st.write(f"Recommended: **{', '.join(ai_suggestions)}**")
             
-            c_yes, c_no, _ = st.columns([1, 1, 3])
+            c_yes, c_no, _ = st.columns([1, 1, 2])
             with c_yes:
                 if st.button("✅ Yes, proceed to Compare", type="primary", use_container_width=True):
                     st.session_state["selected_candidates"] = ai_suggestions
