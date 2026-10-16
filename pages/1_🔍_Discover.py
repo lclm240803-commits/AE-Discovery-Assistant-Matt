@@ -38,6 +38,7 @@ def load_all_ae_records():
                         parts = [t.text for t in elem.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t') if t.text]
                         shared_strings.append("".join(parts))
 
+                # Read 'sheet1.xml' (AE Mock Data)
                 sheet_tree = ET.fromstring(z.read('xl/worksheets/sheet1.xml'))
                 rows = sheet_tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheetData/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row')
                 
@@ -67,6 +68,7 @@ def load_all_ae_records():
                                 "Sub_Sector": cells[9] if len(cells) > 9 else "General",
                                 "Expertise": cells[10] if len(cells) > 10 else "General Facilitation",
                                 "Qualifications": cells[11] if len(cells) > 11 else "Professional Degree",
+                                "Sector_Exp_Yrs": cells[15] if len(cells) > 15 else "10",
                                 "Training_Exp_Yrs": cells[16] if len(cells) > 16 else "5",
                                 "ACTA_Certified": cells[21] if len(cells) > 21 else "Yes",
                                 "Avg_Rating": cells[27] if len(cells) > 27 else "4.8"
@@ -148,18 +150,19 @@ if find_clicked:
                 "Your role is decision support ONLY. Follow these strict domain & grounding rules:\n\n"
                 "RULE 1: STRICT NON-SOCIAL SERVICE DOMAIN REJECTION\n"
                 "- The synthetic database ONLY contains social service training domains: Children & Youth, Family, Disability, Mental Health & Caregiving, Volunteer Management, Foster Parents, and Cross-Sector Social Service Leadership.\n"
-                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services domain (e.g., Engineering, Artificial Intelligence, Cybersecurity, Mechanical Construction, Aviation, Corporate Banking):\n"
+                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services technical/commercial domain (e.g., Engineering, Artificial Intelligence, Computer Science, Mechanical Construction, Aerospace, Corporate Banking, Real Estate, Automotive):\n"
                 "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
                 "  2. State clearly that the requested field is outside the social service training scope.\n"
                 "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
                 "  4. Explicitly state this in 'Information Gaps'.\n\n"
-                "RULE 2: SEMANTIC BRIDGING FOR CARE & HUMAN SERVICES\n"
-                "- If the user's query mentions specialized caregiving, early life, or human service topics that are not verbatim keywords in the database, bridge them semantically to the closest social service domain:\n"
+                "RULE 2: SEMANTIC BRIDGING FOR CARE, COMMUNITY & HUMAN SERVICES\n"
+                "- Any human service, caregiving, community, or psychosocial topic must be semantically bridged to the closest available social service sub-sector:\n"
+                "  • 'Palliative care' / 'Hospice' / 'End-of-life' / 'Bereavement' / 'Grief' -> Bridge to Mental Health & Caregiving (Caregiver Support, Suicide Intervention, De-escalation) or Family (Caregiver Engagement).\n"
+                "  • 'Eldercare' / 'Gerontology' / 'Aging' / 'Dementia' -> Bridge to Mental Health & Caregiving (Caregiver Support) or Family (Caregiver Engagement).\n"
                 "  • 'Infant care' / 'Early childhood' / 'Babies' -> Bridge to Foster Parents (Attachment, Trauma-Informed Caregiving) or Family (Parenting & Caregiver Engagement).\n"
-                "  • 'Eldercare' / 'Gerontology' -> Bridge to Caregiver Support (Mental Health & Caregiving) or Family (Caregiver Engagement).\n"
-                "  • 'Youth crime' / 'Delinquency' -> Bridge to Children & Youth (Youth-at-risk, Casework).\n"
-                "- When bridging, identify the 2 to 3 closest Adult Educators.\n"
-                "- If the user specifies high years of experience (e.g., 20+ years), retrieve the most experienced available trainers in that bridged domain (e.g., Foster Care specialists with 24-26 years, or Family specialists with 14 years), and transparently explain the experience difference in 'Documented Match Rationale' and 'Information Gaps'.\n"
+                "  • 'Youth crime' / 'Delinquency' / 'School refusal' -> Bridge to Children & Youth (Youth-at-risk, Trauma-Informed Practice).\n"
+                "- When bridging, surface the 2 to 3 most relevant Adult Educators from that bridged sub-sector.\n"
+                "- If the user specifies high years of experience (e.g., 20+ or 30+ years), identify the most senior trainers in that bridged domain (evaluating Sector Experience of up to 30 years and Training Experience of 14-26 years). Transparently explain the experience breakdown and any gaps in 'Documented Match Rationale' and 'Information Gaps'.\n"
                 "- Format each candidate strictly as:\n"
                 "   Candidate X: [Exact Full Name]\n"
                 "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
@@ -186,22 +189,18 @@ if find_clicked:
                     
                     # ── Robust Name Detection ──────────────────────────────
                     extracted_names = []
-                    # Only search for candidate names if it's a valid domain
                     if "NO_RELEVANT_DOMAIN" not in analysis_text:
-                        # Find all candidate names that appear in the response, in order of appearance
                         found_candidates = []
                         for real_name in candidate_options:
                             pos = analysis_text.find(real_name)
                             if pos != -1:
                                 found_candidates.append((pos, real_name))
                         
-                        # Sort by their appearance position in the text
                         found_candidates.sort(key=lambda x: x[0])
                         for _, name in found_candidates:
                             if name not in extracted_names:
                                 extracted_names.append(name)
                     
-                    # Store AI suggested candidates
                     st.session_state["ai_suggested_candidates"] = extracted_names[:3]
 
                 except Exception as e:
