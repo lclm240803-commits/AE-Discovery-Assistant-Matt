@@ -79,9 +79,15 @@ def load_all_ae_records():
 ae_records = load_all_ae_records()
 candidate_options = [r["Name"] for r in ae_records]
 
-# Ensure session state key exists
+# ── Session State Management (Cross-Page Persistent) ─────────
 if "selected_candidates" not in st.session_state:
     st.session_state["selected_candidates"] = []
+
+# Initialize discover_picker widget state from persistent selected_candidates
+if "discover_picker" not in st.session_state:
+    st.session_state["discover_picker"] = [
+        name for name in st.session_state["selected_candidates"] if name in candidate_options
+    ]
 
 # ── 3. Search & Input Section ─────────────────────────────────
 st.subheader("1. Training Requirement Input")
@@ -153,11 +159,13 @@ if find_clicked:
                         if name in analysis_text and name not in extracted_names:
                             extracted_names.append(name)
                     
-                    # Directly update the session state key bound to the multiselect widget
+                    # Update both persistent state and widget selection
                     if extracted_names:
                         st.session_state["selected_candidates"] = extracted_names[:3]
+                        st.session_state["discover_picker"] = extracted_names[:3]
                     else:
                         st.session_state["selected_candidates"] = []
+                        st.session_state["discover_picker"] = []
 
                 except Exception as e:
                     st.error(f"Error calling LLM: {e}")
@@ -179,14 +187,19 @@ st.markdown("---")
 st.subheader("3. Shortlist Candidates for Comparison")
 st.caption("Selected candidates will be carried over to the **2 ⚖️ Compare** page.")
 
-# Using key="selected_candidates" directly ensures Streamlit manages selection state
-# without dropping items on re-runs.
+# Callback syncs the widget value directly to persistent session state
+def sync_discover_candidates():
+    st.session_state["selected_candidates"] = st.session_state["discover_picker"]
+
 selected_aes = st.multiselect(
     "Select at least 2 Adult Educators to compare side-by-side:",
     options=candidate_options,
-    key="selected_candidates",
+    key="discover_picker",
+    on_change=sync_discover_candidates,
     placeholder="Choose Adult Educators from recommendations or directory..."
 )
+# Keep persistent state in sync on every run
+st.session_state["selected_candidates"] = selected_aes
 
 if len(selected_aes) >= 2:
     st.success(f"✅ **{len(selected_aes)} candidates shortlisted!** You can now proceed to the **2 ⚖️ Compare** page in the left sidebar.")
