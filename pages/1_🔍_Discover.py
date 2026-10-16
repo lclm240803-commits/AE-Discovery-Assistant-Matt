@@ -83,7 +83,6 @@ candidate_options = [r["Name"] for r in ae_records]
 if "selected_candidates" not in st.session_state:
     st.session_state["selected_candidates"] = []
 
-# Initialize discover_picker widget state from persistent selected_candidates
 if "discover_picker" not in st.session_state:
     st.session_state["discover_picker"] = [
         name for name in st.session_state["selected_candidates"] if name in candidate_options
@@ -101,7 +100,25 @@ with col_query:
         height=130,
         placeholder="e.g., Seeking an experienced trainer with a clinical or social work background in trauma-informed care and counselling for youth-at-risk caseworkers."
     )
-    find_clicked = st.button("🔎 Search Relevant Adult Educators", type="primary", use_container_width=True)
+    
+    col_btn1, col_btn2 = st.columns([3, 2])
+    with col_btn1:
+        find_clicked = st.button("🔎 Search Relevant Adult Educators", type="primary", use_container_width=True)
+    with col_btn2:
+        reset_clicked = st.button("🔄 Clear / Reset Search", use_container_width=True)
+
+    # ── Reset / Clean Slate Logic ─────────────────────────────
+    if reset_clicked:
+        st.session_state["last_requirement"] = ""
+        st.session_state["selected_candidates"] = []
+        st.session_state["discover_picker"] = []
+        if "compare_picker" in st.session_state:
+            st.session_state["compare_picker"] = []
+        if "discovery_analysis" in st.session_state:
+            del st.session_state["discovery_analysis"]
+        if "last_comparison_text" in st.session_state:
+            del st.session_state["last_comparison_text"]
+        st.rerun()
 
 with col_info:
     with st.container(border=True):
@@ -187,7 +204,6 @@ st.markdown("---")
 st.subheader("3. Shortlist Candidates for Comparison")
 st.caption("Selected candidates will be carried over to the **2 ⚖️ Compare** page.")
 
-# Callback syncs the widget value directly to persistent session state
 def sync_discover_candidates():
     st.session_state["selected_candidates"] = st.session_state["discover_picker"]
 
@@ -198,7 +214,6 @@ selected_aes = st.multiselect(
     on_change=sync_discover_candidates,
     placeholder="Choose Adult Educators from recommendations or directory..."
 )
-# Keep persistent state in sync on every run
 st.session_state["selected_candidates"] = selected_aes
 
 if len(selected_aes) >= 2:
