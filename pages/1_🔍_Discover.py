@@ -30,7 +30,6 @@ def load_all_ae_records():
     if os.path.exists(excel_path):
         try:
             with zipfile.ZipFile(excel_path, 'r') as z:
-                # Read shared strings table
                 shared_strings = []
                 if 'xl/sharedStrings.xml' in z.namelist():
                     tree = ET.fromstring(z.read('xl/sharedStrings.xml'))
@@ -38,11 +37,9 @@ def load_all_ae_records():
                         parts = [t.text for t in elem.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t') if t.text]
                         shared_strings.append("".join(parts))
 
-                # Read 'sheet1.xml' (AE Mock Data)
                 sheet_tree = ET.fromstring(z.read('xl/worksheets/sheet1.xml'))
                 rows = sheet_tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheetData/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row')
                 
-                # Data rows start from Row 4 onwards (Row 3 is headers)
                 if len(rows) >= 4:
                     for r in rows[3:]:
                         cells = []
@@ -82,6 +79,10 @@ def load_all_ae_records():
 ae_records = load_all_ae_records()
 candidate_options = [r["Name"] for r in ae_records]
 
+# Ensure session state key exists
+if "selected_candidates" not in st.session_state:
+    st.session_state["selected_candidates"] = []
+
 # ── 3. Search & Input Section ─────────────────────────────────
 st.subheader("1. Training Requirement Input")
 col_query, col_info = st.columns([3, 1])
@@ -109,7 +110,6 @@ if find_clicked:
     else:
         st.session_state["last_requirement"] = user_requirement
         
-        # Prepare context representation (top 35 profiles for comprehensive coverage)
         context_str = json.dumps(ae_records[:35], indent=2)
         api_key = st.secrets.get("OPENAI_API_KEY", "")
         
@@ -153,7 +153,7 @@ if find_clicked:
                         if name in analysis_text and name not in extracted_names:
                             extracted_names.append(name)
                     
-                    # If valid candidates were found, update the shortlist; otherwise clear it!
+                    # Directly update the session state key bound to the multiselect widget
                     if extracted_names:
                         st.session_state["selected_candidates"] = extracted_names[:3]
                     else:
@@ -179,16 +179,14 @@ st.markdown("---")
 st.subheader("3. Shortlist Candidates for Comparison")
 st.caption("Selected candidates will be carried over to the **2 ⚖️ Compare** page.")
 
-current_shortlist = st.session_state.get("selected_candidates", [])
-valid_defaults = [name for name in current_shortlist if name in candidate_options]
-
+# Using key="selected_candidates" directly ensures Streamlit manages selection state
+# without dropping items on re-runs.
 selected_aes = st.multiselect(
     "Select at least 2 Adult Educators to compare side-by-side:",
     options=candidate_options,
-    default=valid_defaults,
+    key="selected_candidates",
     placeholder="Choose Adult Educators from recommendations or directory..."
 )
-st.session_state["selected_candidates"] = selected_aes
 
 if len(selected_aes) >= 2:
     st.success(f"✅ **{len(selected_aes)} candidates shortlisted!** You can now proceed to the **2 ⚖️ Compare** page in the left sidebar.")
@@ -202,7 +200,6 @@ with st.expander("👤 Browse Adult Educator Profiles Directory", expanded=False
     
     search_filter = st.text_input("Filter profiles by name or keyword:", placeholder="e.g. Tan Wei Ming, Youth, Trauma...")
     
-    # Filter records based on user search
     displayed_records = ae_records
     if search_filter:
         displayed_records = [
@@ -210,7 +207,6 @@ with st.expander("👤 Browse Adult Educator Profiles Directory", expanded=False
             if search_filter.lower() in r["Name"].lower() or search_filter.lower() in r["Expertise"].lower() or search_filter.lower() in r["Sub_Sector"].lower()
         ]
 
-    # Render each profile as an elegant card
     for profile in displayed_records[:8]:
         with st.container(border=True):
             col_main, col_stats = st.columns([3, 1])
