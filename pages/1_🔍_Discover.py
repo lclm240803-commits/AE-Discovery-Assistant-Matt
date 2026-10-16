@@ -148,21 +148,14 @@ if find_clicked:
             system_prompt = (
                 "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
                 "Your role is decision support ONLY. Follow these strict domain & grounding rules:\n\n"
-                "RULE 1: STRICT NON-SOCIAL SERVICE DOMAIN REJECTION\n"
-                "- The synthetic database ONLY contains social service training domains: Children & Youth, Family, Disability, Mental Health & Caregiving, Volunteer Management, Foster Parents, and Cross-Sector Social Service Leadership.\n"
-                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services technical/commercial domain (e.g., Engineering, Artificial Intelligence, Computer Science, Mechanical Construction, Aerospace, Corporate Banking, Real Estate, Automotive):\n"
-                "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
-                "  2. State clearly that the requested field is outside the social service training scope.\n"
-                "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
-                "  4. Explicitly state this in 'Information Gaps'.\n\n"
-                "RULE 2: SEMANTIC BRIDGING FOR CARE, COMMUNITY & HUMAN SERVICES\n"
-                "- Any human service, caregiving, community, or psychosocial topic must be semantically bridged to the closest available social service sub-sector:\n"
-                "  • 'Palliative care' / 'Hospice' / 'End-of-life' / 'Bereavement' / 'Grief' -> Bridge to Mental Health & Caregiving (Caregiver Support, Suicide Intervention, De-escalation) or Family (Caregiver Engagement).\n"
-                "  • 'Eldercare' / 'Gerontology' / 'Aging' / 'Dementia' -> Bridge to Mental Health & Caregiving (Caregiver Support) or Family (Caregiver Engagement).\n"
-                "  • 'Infant care' / 'Early childhood' / 'Babies' -> Bridge to Foster Parents (Attachment, Trauma-Informed Caregiving) or Family (Parenting & Caregiver Engagement).\n"
-                "  • 'Youth crime' / 'Delinquency' / 'School refusal' -> Bridge to Children & Youth (Youth-at-risk, Trauma-Informed Practice).\n"
-                "- When bridging, surface the 2 to 3 most relevant Adult Educators from that bridged sub-sector.\n"
-                "- If the user specifies high years of experience (e.g., 20+ or 30+ years), identify the most senior trainers in that bridged domain (evaluating Sector Experience of up to 30 years and Training Experience of 14-26 years). Transparently explain the experience breakdown and any gaps in 'Documented Match Rationale' and 'Information Gaps'.\n"
+                "RULE 1: MANDATORY SEMANTIC BRIDGING FOR CARE, COMMUNITY & HUMAN SERVICES\n"
+                "- ALL caregiving, health & wellness support, end-of-life care, and psychosocial topics ARE WITHIN THE SOCIAL SERVICE SCOPE. You MUST bridge them to available sub-sectors:\n"
+                "  • 'Palliative care' / 'End-of-life' / 'Hospice' / 'Bereavement' / 'Grief' -> Semantically bridge to Mental Health & Caregiving (caregiver support, suicide/crisis intervention, de-escalation) or Family (caregiver engagement).\n"
+                "  • 'Eldercare' / 'Gerontology' / 'Dementia' / 'Aging' -> Semantically bridge to Mental Health & Caregiving or Family (caregiver support).\n"
+                "  • 'Infant care' / 'Early childhood' / 'Babies' -> Semantically bridge to Foster Parents (attachment, trauma-informed caregiving) or Family (parenting).\n"
+                "  • 'Youth crime' / 'Delinquency' / 'School refusal' -> Semantically bridge to Children & Youth.\n"
+                "- When bridging, ALWAYS identify the 2 to 3 closest Adult Educators from that bridged sub-sector.\n"
+                "- If the user requests high years of experience (e.g. 20+ or 30+ years), surface the most senior available trainers in that bridged domain (e.g., senior trainers with 15-26 years training exp and 20-30 years sector exp). DO NOT reject the query; simply explain the experience difference in 'Documented Match Rationale' and note the 30-year requirement in 'Information Gaps'.\n"
                 "- Format each candidate strictly as:\n"
                 "   Candidate X: [Exact Full Name]\n"
                 "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
@@ -170,6 +163,12 @@ if find_clicked:
                 "   - **Documented Match Rationale**: [Reasoning, including semantic bridge explanation]\n"
                 "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
                 "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
+                "RULE 2: STRICT REJECTION FOR NON-HUMAN SERVICES ONLY\n"
+                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services technical or industrial domain (e.g., Civil/Mechanical Engineering, Artificial Intelligence/Machine Learning, Computer Hardware, Aviation, Construction, Finance/Accounting, Real Estate Sales):\n"
+                "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
+                "  2. State clearly that the requested field is a technical/commercial discipline outside the social service training scope.\n"
+                "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
+                "  4. Explicitly state this in 'Information Gaps'.\n\n"
                 "RULE 3: NEUTRAL DECISION SUPPORT\n"
                 "- Never declare any candidate as 'the best' or 'winner'."
             )
@@ -212,7 +211,8 @@ if "discovery_analysis" in st.session_state:
     st.subheader("2. AI Discovery Analysis & Evidence")
     
     with st.container(border=True):
-        clean_display = st.session_state["discovery_analysis"].replace("NO_RELEVANT_DOMAIN", "").strip()
+        # Strip NO_RELEVANT_DOMAIN and any leftover punctuation or whitespace
+        clean_display = st.session_state["discovery_analysis"].replace("NO_RELEVANT_DOMAIN", "").lstrip(". \n").strip()
         st.markdown(clean_display)
         
     ai_suggestions = st.session_state.get("ai_suggested_candidates", [])
