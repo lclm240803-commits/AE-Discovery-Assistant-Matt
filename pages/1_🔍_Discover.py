@@ -96,10 +96,10 @@ st.subheader("1. Training Requirement Input")
 col_query, col_info = st.columns([3, 1])
 
 with col_query:
-    default_prompt = st.session_state.get("last_requirement", "")
     user_requirement = st.text_area(
         "Describe your course objectives, target audience, or desired competencies:",
-        value=default_prompt,
+        value=st.session_state.get("last_requirement", ""),
+        key="search_input_text",
         height=130,
         placeholder="e.g., Seeking an experienced trainer with a clinical or social work background in trauma-informed care and counselling for youth-at-risk caseworkers."
     )
@@ -113,6 +113,7 @@ with col_query:
     # ── Reset / Clean Slate Logic ─────────────────────────────
     if reset_clicked:
         st.session_state["last_requirement"] = ""
+        st.session_state["search_input_text"] = ""
         st.session_state["selected_candidates"] = []
         st.session_state["discover_picker"] = []
         st.session_state["ai_suggested_candidates"] = []
@@ -132,10 +133,11 @@ with col_info:
 
 # ── 4. Retrieval & Analysis Execution ─────────────────────────
 if find_clicked:
-    if not user_requirement.strip():
+    search_query = st.session_state.get("search_input_text", "").strip()
+    if not search_query:
         st.warning("⚠️ Please enter a training requirement before searching.")
     else:
-        st.session_state["last_requirement"] = user_requirement
+        st.session_state["last_requirement"] = search_query
         
         context_str = json.dumps(ae_records[:35], indent=2)
         api_key = st.secrets.get("OPENAI_API_KEY", "")
@@ -155,7 +157,7 @@ if find_clicked:
                 "  • 'Infant care' / 'Early childhood' / 'Babies' -> Semantically bridge to Foster Parents (attachment, trauma-informed caregiving) or Family (parenting).\n"
                 "  • 'Youth crime' / 'Delinquency' / 'School refusal' -> Semantically bridge to Children & Youth.\n"
                 "- When bridging, ALWAYS identify the 2 to 3 closest Adult Educators from that bridged sub-sector.\n"
-                "- If the user requests high years of experience (e.g. 20+ or 30+ years), surface the most senior available trainers in that bridged domain (e.g., senior trainers with 15-26 years training exp and 20-30 years sector exp). DO NOT reject the query; simply explain the experience difference in 'Documented Match Rationale' and note the 30-year requirement in 'Information Gaps'.\n"
+                "- If the user requests high years of experience (e.g. 20+ or 30+ years), surface the most senior available trainers in that bridged domain (e.g., senior trainers with 15-26 years training exp and 20-30 years sector exp). DO NOT reject the query; simply explain the experience difference in 'Documented Match Rationale' and note the experience requirement in 'Information Gaps'.\n"
                 "- Format each candidate strictly as:\n"
                 "   Candidate X: [Exact Full Name]\n"
                 "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
@@ -164,9 +166,9 @@ if find_clicked:
                 "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
                 "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
                 "RULE 2: STRICT REJECTION FOR NON-HUMAN SERVICES ONLY\n"
-                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services technical or industrial domain (e.g., Civil/Mechanical Engineering, Artificial Intelligence/Machine Learning, Computer Hardware, Aviation, Construction, Finance/Accounting, Real Estate Sales):\n"
+                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services technical, industrial, or athletic field (e.g., Civil/Mechanical Engineering, Artificial Intelligence/Machine Learning, Computer Hardware, Aviation, Construction, Finance/Accounting, Martial Arts/Combat Sports, Real Estate Sales):\n"
                 "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
-                "  2. State clearly that the requested field is a technical/commercial discipline outside the social service training scope.\n"
+                "  2. State clearly that the requested field is outside the social service training scope.\n"
                 "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
                 "  4. Explicitly state this in 'Information Gaps'.\n\n"
                 "RULE 3: NEUTRAL DECISION SUPPORT\n"
@@ -179,7 +181,7 @@ if find_clicked:
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"AE Records:\n{context_str}\n\nOfficer Training Requirement:\n{user_requirement}"}
+                            {"role": "user", "content": f"AE Records:\n{context_str}\n\nOfficer Training Requirement:\n{search_query}"}
                         ],
                         temperature=0.2
                     )
@@ -211,7 +213,6 @@ if "discovery_analysis" in st.session_state:
     st.subheader("2. AI Discovery Analysis & Evidence")
     
     with st.container(border=True):
-        # Strip NO_RELEVANT_DOMAIN and any leftover punctuation or whitespace
         clean_display = st.session_state["discovery_analysis"].replace("NO_RELEVANT_DOMAIN", "").lstrip(". \n").strip()
         st.markdown(clean_display)
         
@@ -237,6 +238,7 @@ if "discovery_analysis" in st.session_state:
             with c_no:
                 if st.button("❌ No, start new search", use_container_width=True):
                     st.session_state["last_requirement"] = ""
+                    st.session_state["search_input_text"] = ""
                     st.session_state["selected_candidates"] = []
                     st.session_state["discover_picker"] = []
                     st.session_state["ai_suggested_candidates"] = []
