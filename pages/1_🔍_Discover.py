@@ -145,27 +145,28 @@ if find_clicked:
             system_prompt = (
                 "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
                 "Your role is decision support ONLY. Follow these strict domain & grounding rules:\n\n"
-                "RULE 1: DOMAIN RELEVANCE EVALUATION\n"
+                "RULE 1: STRICT NON-SOCIAL SERVICE DOMAIN REJECTION\n"
                 "- The synthetic database ONLY contains social service training domains: Children & Youth, Family, Disability, Mental Health & Caregiving, Volunteer Management, Foster Parents, and Cross-Sector Social Service Leadership.\n"
-                "- If the user's query asks for an entirely unrelated domain (e.g., Engineering, Artificial Intelligence, Computer Science, Construction, Aeronautics, Finance, Real Estate):\n"
+                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services domain (e.g., Engineering, Artificial Intelligence, Cybersecurity, Mechanical Construction, Aviation, Corporate Banking):\n"
                 "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
                 "  2. State clearly that the requested field is outside the social service training scope.\n"
                 "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
                 "  4. Explicitly state this in 'Information Gaps'.\n\n"
-                "RULE 2: SEMANTIC PROXIMITY & ADJACENT MATCHING\n"
-                "- If the user's requirement uses terms that are semantically related or adjacent to social service fields (e.g., 'eldercare' maps to 'Caregiver Support / Mental Health / Family'; 'infant care' maps to 'Children & Youth / Parenting / Foster Care'):\n"
-                "  1. Surface the 2 to 3 most relevant AEs from that adjacent sub-sector.\n"
-                "  2. In the 'Documented Match Rationale', explain the semantic connection (e.g., 'While eldercare is not explicitly documented, this trainer specializes in caregiver support...').\n"
-                "  3. Format each candidate strictly as:\n"
-                "     Candidate X: [Exact Full Name]\n"
-                "     - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
-                "     - **Sub-Sector Alignment**: [Alignment]\n"
-                "     - **Documented Match Rationale**: [Reasoning]\n"
-                "     - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
-                "     - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
-                "RULE 3: NO MATCH / UNMET CONSTRAINTS\n"
-                "- If no candidates meet the criteria (or if experience constraints cannot be satisfied), state clearly that no candidates match the criteria and list the gaps. Do NOT output 'Candidate 1' or any candidate blocks.\n\n"
-                "RULE 4: NEUTRAL TONE\n"
+                "RULE 2: SEMANTIC BRIDGING FOR CARE & HUMAN SERVICES\n"
+                "- If the user's query mentions specialized caregiving, early life, or human service topics that are not verbatim keywords in the database, bridge them semantically to the closest social service domain:\n"
+                "  • 'Infant care' / 'Early childhood' / 'Babies' -> Bridge to Foster Parents (Attachment, Trauma-Informed Caregiving) or Family (Parenting & Caregiver Engagement).\n"
+                "  • 'Eldercare' / 'Gerontology' -> Bridge to Caregiver Support (Mental Health & Caregiving) or Family (Caregiver Engagement).\n"
+                "  • 'Youth crime' / 'Delinquency' -> Bridge to Children & Youth (Youth-at-risk, Casework).\n"
+                "- When bridging, identify the 2 to 3 closest Adult Educators.\n"
+                "- If the user specifies high years of experience (e.g., 20+ years), retrieve the most experienced available trainers in that bridged domain (e.g., Foster Care specialists with 24-26 years, or Family specialists with 14 years), and transparently explain the experience difference in 'Documented Match Rationale' and 'Information Gaps'.\n"
+                "- Format each candidate strictly as:\n"
+                "   Candidate X: [Exact Full Name]\n"
+                "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
+                "   - **Sub-Sector Alignment**: [Alignment]\n"
+                "   - **Documented Match Rationale**: [Reasoning, including semantic bridge explanation]\n"
+                "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
+                "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
+                "RULE 3: NEUTRAL DECISION SUPPORT\n"
                 "- Never declare any candidate as 'the best' or 'winner'."
             )
 
@@ -215,7 +216,7 @@ if "discovery_analysis" in st.session_state:
         
     current_shortlist = st.session_state.get("selected_candidates", [])
     if not current_shortlist:
-        st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain or specific experience is not available in social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
+        st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain is outside social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
 
 # ── 6. Candidate Shortlisting for Compare Page (Always Visible) ─
 st.markdown("---")
