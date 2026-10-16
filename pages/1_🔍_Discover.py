@@ -31,6 +31,7 @@ def load_all_ae_records():
     if os.path.exists(excel_path):
         try:
             with zipfile.ZipFile(excel_path, 'r') as z:
+                # Read shared strings table
                 shared_strings = []
                 if 'xl/sharedStrings.xml' in z.namelist():
                     tree = ET.fromstring(z.read('xl/sharedStrings.xml'))
@@ -113,6 +114,7 @@ with col_query:
         st.session_state["last_requirement"] = ""
         st.session_state["selected_candidates"] = []
         st.session_state["discover_picker"] = []
+        st.session_state["ai_suggested_candidates"] = []
         if "compare_picker" in st.session_state:
             st.session_state["compare_picker"] = []
         if "discovery_analysis" in st.session_state:
@@ -183,24 +185,19 @@ if find_clicked:
                     analysis_text = response.choices[0].message.content
                     st.session_state["discovery_analysis"] = analysis_text
                     
-                    # Robust extraction: ONLY extract names explicitly formatted as "Candidate X: [Name]"
+                    # Robust candidate name extraction: Matches "Candidate X: [Name]" even with leading numbers
                     extracted_names = []
                     if "NO_RELEVANT_DOMAIN" not in analysis_text and "Candidate" in analysis_text:
                         for line in analysis_text.splitlines():
-                            match = re.search(r"Candidate\s+\d+:\s*([A-Za-z\s]+)", line)
+                            match = re.search(r"Candidate\s+\d+[:\-]\s*([A-Za-z\s]+)", line)
                             if match:
                                 c_name = match.group(1).strip()
                                 for real_name in candidate_options:
                                     if real_name.lower() == c_name.lower() and real_name not in extracted_names:
                                         extracted_names.append(real_name)
                     
-                    # Update both persistent state and widget selection
-                    if extracted_names:
-                        st.session_state["selected_candidates"] = extracted_names[:3]
-                        st.session_state["discover_picker"] = extracted_names[:3]
-                    else:
-                        st.session_state["selected_candidates"] = []
-                        st.session_state["discover_picker"] = []
+                    # Store AI suggested candidates
+                    st.session_state["ai_suggested_candidates"] = extracted_names[:3]
 
                 except Exception as e:
                     st.error(f"Error calling LLM: {e}")
@@ -214,9 +211,38 @@ if "discovery_analysis" in st.session_state:
         clean_display = st.session_state["discovery_analysis"].replace("NO_RELEVANT_DOMAIN", "").strip()
         st.markdown(clean_display)
         
-    current_shortlist = st.session_state.get("selected_candidates", [])
-    if not current_shortlist:
+    ai_suggestions = st.session_state.get("ai_suggested_candidates", [])
+    
+    if not ai_suggestions:
         st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain is outside social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
+    else:
+        # Prompt user to accept the shortlisted candidates
+        st.markdown("---")
+        with st.container(border=True):
+            st.markdown("#### 🎯 Would you like to select the shortlisted candidates for comparison?")
+            st.write(f"Recommended: **{', '.join(ai_suggestions)}**")
+            
+            c_yes, c_no, _ = st.columns([1, 1, 3])
+            with c_yes:
+                if st.button("✅ Yes, proceed to Compare", type="primary", use_container_width=True):
+                    st.session_state["selected_candidates"] = ai_suggestions
+                    st.session_state["discover_picker"] = ai_suggestions
+                    if "compare_picker" in st.session_state:
+                        st.session_state["compare_picker"] = ai_suggestions
+                    st.switch_page("pages/2_⚖️_Compare.py")
+            with c_no:
+                if st.button("❌ No, start new search", use_container_width=True):
+                    st.session_state["last_requirement"] = ""
+                    st.session_state["selected_candidates"] = []
+                    st.session_state["discover_picker"] = []
+                    st.session_state["ai_suggested_candidates"] = []
+                    if "compare_picker" in st.session_state:
+                        st.session_state["compare_picker"] = []
+                    if "discovery_analysis" in st.session_state:
+                        del st.session_state["discovery_analysis"]
+                    if "last_comparison_text" in st.session_state:
+                        del st.session_state["last_comparison_text"]
+                    st.rerun()
 
 # ── 6. Candidate Shortlisting for Compare Page (Always Visible) ─
 st.markdown("---")
