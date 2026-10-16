@@ -3,6 +3,7 @@ import json
 import os
 import zipfile
 import xml.etree.ElementTree as ET
+import re
 from openai import OpenAI
 from utility import check_password
 
@@ -143,21 +144,29 @@ if find_clicked:
             
             system_prompt = (
                 "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
-                "Your role is decision support ONLY. Follow these strict rules:\n"
-                "1. Base all statements strictly on the provided AE records. Do NOT invent credentials, experience, or ratings.\n"
-                "2. If 1 or more candidates match the requirements, identify the 2 to 3 most relevant AEs. Format each strictly as:\n"
-                "   Candidate X\n"
-                "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
-                "   - **Sub-Sector Alignment**: [Alignment]\n"
-                "   - **Documented Match Rationale**: [Reasoning]\n"
-                "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
-                "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n"
-                "3. If NO candidates match the requirements in the provided records:\n"
-                "   - Do NOT output 'Candidate 1' or any candidate template.\n"
-                "   - Clearly state that no candidates match the specified criteria.\n"
-                "   - Mention the nearest available profiles in the relevant sub-sector (e.g., maximum training experience available).\n"
-                "   - Explicitly list the unmet criteria under an 'Information Gaps' section.\n"
-                "4. Maintain a neutral decision-support tone: Never label any candidate as 'the best' or 'winner'."
+                "Your role is decision support ONLY. Follow these strict domain & grounding rules:\n\n"
+                "RULE 1: DOMAIN RELEVANCE EVALUATION\n"
+                "- The synthetic database ONLY contains social service training domains: Children & Youth, Family, Disability, Mental Health & Caregiving, Volunteer Management, Foster Parents, and Cross-Sector Social Service Leadership.\n"
+                "- If the user's query asks for an entirely unrelated domain (e.g., Engineering, Artificial Intelligence, Computer Science, Construction, Aeronautics, Finance, Real Estate):\n"
+                "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
+                "  2. State clearly that the requested field is outside the social service training scope.\n"
+                "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
+                "  4. Explicitly state this in 'Information Gaps'.\n\n"
+                "RULE 2: SEMANTIC PROXIMITY & ADJACENT MATCHING\n"
+                "- If the user's requirement uses terms that are semantically related or adjacent to social service fields (e.g., 'eldercare' maps to 'Caregiver Support / Mental Health / Family'; 'infant care' maps to 'Children & Youth / Parenting / Foster Care'):\n"
+                "  1. Surface the 2 to 3 most relevant AEs from that adjacent sub-sector.\n"
+                "  2. In the 'Documented Match Rationale', explain the semantic connection (e.g., 'While eldercare is not explicitly documented, this trainer specializes in caregiver support...').\n"
+                "  3. Format each candidate strictly as:\n"
+                "     Candidate X: [Exact Full Name]\n"
+                "     - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
+                "     - **Sub-Sector Alignment**: [Alignment]\n"
+                "     - **Documented Match Rationale**: [Reasoning]\n"
+                "     - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
+                "     - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
+                "RULE 3: NO MATCH / UNMET CONSTRAINTS\n"
+                "- If no candidates meet the criteria (or if experience constraints cannot be satisfied), state clearly that no candidates match the criteria and list the gaps. Do NOT output 'Candidate 1' or any candidate blocks.\n\n"
+                "RULE 4: NEUTRAL TONE\n"
+                "- Never declare any candidate as 'the best' or 'winner'."
             )
 
             with st.spinner("Analyzing AE profiles and synthesizing evidence..."):
@@ -173,11 +182,16 @@ if find_clicked:
                     analysis_text = response.choices[0].message.content
                     st.session_state["discovery_analysis"] = analysis_text
                     
-                    # Intelligently extract names that appear in candidate_options
+                    # Robust extraction: ONLY extract names explicitly formatted as "Candidate X: [Name]"
                     extracted_names = []
-                    for name in candidate_options:
-                        if name in analysis_text and name not in extracted_names:
-                            extracted_names.append(name)
+                    if "NO_RELEVANT_DOMAIN" not in analysis_text and "Candidate" in analysis_text:
+                        for line in analysis_text.splitlines():
+                            match = re.search(r"Candidate\s+\d+:\s*([A-Za-z\s]+)", line)
+                            if match:
+                                c_name = match.group(1).strip()
+                                for real_name in candidate_options:
+                                    if real_name.lower() == c_name.lower() and real_name not in extracted_names:
+                                        extracted_names.append(real_name)
                     
                     # Update both persistent state and widget selection
                     if extracted_names:
@@ -196,11 +210,12 @@ if "discovery_analysis" in st.session_state:
     st.subheader("2. AI Discovery Analysis & Evidence")
     
     with st.container(border=True):
-        st.markdown(st.session_state["discovery_analysis"])
+        clean_display = st.session_state["discovery_analysis"].replace("NO_RELEVANT_DOMAIN", "").strip()
+        st.markdown(clean_display)
         
     current_shortlist = st.session_state.get("selected_candidates", [])
     if not current_shortlist:
-        st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
+        st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain or specific experience is not available in social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
 
 # ── 6. Candidate Shortlisting for Compare Page (Always Visible) ─
 st.markdown("---")
