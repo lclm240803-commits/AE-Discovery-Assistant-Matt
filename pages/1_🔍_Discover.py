@@ -167,6 +167,11 @@ if find_clicked:
                                 extracted_names.append(name)
                     
                     st.session_state["ai_suggested_candidates"] = extracted_names[:3]
+                    # Pre-select all recommended candidates by default for ease of use
+                    st.session_state["selected_candidates"] = extracted_names[:3]
+                    st.session_state["discover_picker"] = extracted_names[:3]
+                    if "compare_picker" in st.session_state:
+                        st.session_state["compare_picker"] = extracted_names[:3]
 
                 except Exception as e:
                     st.error(f"Error calling LLM: {e}")
@@ -185,21 +190,49 @@ if "discovery_analysis" in st.session_state:
     if not ai_suggestions:
         st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain is outside social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
     else:
+        # Interactive Candidate Picking Container with Single Buttons
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🎯 Would you like to select the shortlisted candidates for comparison?")
-            st.write(f"Recommended: **{', '.join(ai_suggestions)}**")
+            st.markdown("#### 🎯 Select AEs to Compare")
+            st.caption("Click individual candidate buttons below to select or deselect them for comparison:")
             
-            c_yes, c_no, _ = st.columns([1, 1, 2])
-            with c_yes:
-                if st.button("✅ Yes, proceed to Compare", type="primary", use_container_width=True):
-                    st.session_state["selected_candidates"] = ai_suggestions
-                    st.session_state["discover_picker"] = ai_suggestions
-                    if "compare_picker" in st.session_state:
-                        st.session_state["compare_picker"] = ai_suggestions
+            # Render a single button for each recommended AE
+            cols_candidates = st.columns(len(ai_suggestions))
+            for idx, candidate in enumerate(ai_suggestions):
+                is_selected = candidate in st.session_state.get("selected_candidates", [])
+                btn_label = f"✅ {candidate}" if is_selected else f"➕ {candidate}"
+                btn_type = "primary" if is_selected else "secondary"
+                
+                with cols_candidates[idx]:
+                    if st.button(btn_label, key=f"btn_ae_{candidate}", type=btn_type, use_container_width=True):
+                        current = list(st.session_state.get("selected_candidates", []))
+                        if candidate in current:
+                            current.remove(candidate)
+                        else:
+                            current.append(candidate)
+                        
+                        st.session_state["selected_candidates"] = current
+                        st.session_state["discover_picker"] = current
+                        if "compare_picker" in st.session_state:
+                            st.session_state["compare_picker"] = current
+                        st.rerun()
+
+            # Action Bar
+            current_count = len(st.session_state.get("selected_candidates", []))
+            st.markdown("")
+            c_proceed, c_reset = st.columns([3, 2])
+            with c_proceed:
+                can_proceed = current_count >= 2
+                proceed_btn = st.button(
+                    f"⚖️ Proceed to Compare with Selected ({current_count})",
+                    type="primary" if can_proceed else "secondary",
+                    disabled=not can_proceed,
+                    use_container_width=True
+                )
+                if proceed_btn:
                     st.switch_page("pages/2_⚖️_Compare.py")
-            with c_no:
-                if st.button("❌ No, start new search", use_container_width=True):
+            with c_reset:
+                if st.button("❌ Clear Search & Selection", use_container_width=True):
                     st.session_state["last_requirement"] = ""
                     st.session_state["selected_candidates"] = []
                     st.session_state["discover_picker"] = []
