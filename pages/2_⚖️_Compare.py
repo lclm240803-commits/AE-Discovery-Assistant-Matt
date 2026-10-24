@@ -1,9 +1,7 @@
 import streamlit as st
 import json
-import os
-import zipfile
-import xml.etree.ElementTree as ET
 from openai import OpenAI
+from supabase import create_client
 from utility import check_password
 
 # ── 1. Page Configuration & Gatekeeper ────────────────────────
@@ -21,101 +19,49 @@ st.title("⚖️ Feature 2: Objective Side-by-Side AE Comparison")
 st.caption("Evidence-Based Evaluation · Historical Engagement Records · Gap Analysis")
 st.markdown("---")
 
-# ── 2. AppLocker-Safe Native XML Data Loaders ─────────────────
-@st.cache_data
+# ── 2. Supabase Cloud Database Loaders ────────────────────────
+@st.cache_data(ttl=600)
 def load_trainer_profiles():
-    excel_path = "SSI_AE_Mock_Dataset_100_Trainers.xlsx"
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    supabase = create_client(url, key)
+    
+    response = supabase.table("AE_Mock_Dataset").select("*").execute()
     records = []
-    if os.path.exists(excel_path):
-        try:
-            with zipfile.ZipFile(excel_path, 'r') as z:
-                shared_strings = []
-                if 'xl/sharedStrings.xml' in z.namelist():
-                    tree = ET.fromstring(z.read('xl/sharedStrings.xml'))
-                    for elem in tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si'):
-                        parts = [t.text for t in elem.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t') if t.text]
-                        shared_strings.append("".join(parts))
-
-                sheet_tree = ET.fromstring(z.read('xl/worksheets/sheet1.xml'))
-                rows = sheet_tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheetData/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row')
-                
-                if len(rows) >= 4:
-                    for r in rows[3:]:
-                        cells = []
-                        for c in r.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c'):
-                            v = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v')
-                            if v is not None:
-                                val = v.text
-                                if c.attrib.get('t') == 's' and shared_strings:
-                                    cells.append(shared_strings[int(val)])
-                                else:
-                                    cells.append(val)
-                            else:
-                                is_elem = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}is/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t')
-                                cells.append(is_elem.text if (is_elem is not None and is_elem.text) else "")
-
-                        if cells and len(cells) >= 11:
-                            rec = {
-                                "Name": cells[0] if len(cells) > 0 else "Unknown",
-                                "Agency_or_Org": cells[7] if len(cells) > 7 else "Social Service Institute",
-                                "Designation": cells[8] if len(cells) > 8 else "Adult Educator",
-                                "Sub_Sector": cells[9] if len(cells) > 9 else "General",
-                                "Expertise": cells[10] if len(cells) > 10 else "General Facilitation",
-                                "Qualifications": cells[11] if len(cells) > 11 else "Degree",
-                                "Sector_Exp_Yrs": cells[15] if len(cells) > 15 else "N/A",
-                                "Training_Exp_Yrs": cells[16] if len(cells) > 16 else "N/A",
-                                "ACTA_Certified": cells[21] if len(cells) > 21 else "Not documented",
-                                "Avg_Rating": cells[27] if len(cells) > 27 else "4.8"
-                            }
-                            records.append(rec)
-        except Exception:
-            pass
+    for row in response.data:
+        records.append({
+            "Name": row.get("Full Name") or "Unknown",
+            "Agency_or_Org": row.get("Organisation") or "Social Service Institute",
+            "Designation": row.get("Designation") or "Adult Educator",
+            "Sub_Sector": row.get("Sub-Sector") or "General",
+            "Expertise": row.get("Domain Expertise") or "General Facilitation",
+            "Qualifications": row.get("Highest Academic Qualifications") or "Degree",
+            "Sector_Exp_Yrs": str(row.get("Years in Social Service Sector/Relevant Sector") or "N/A"),
+            "Training_Exp_Yrs": str(row.get("Training Experience") or "N/A"),
+            "ACTA_Certified": row.get("ACTA/ACLP Certified") or "Not documented",
+            "Avg_Rating": str(row.get("Ave AE effectiveness in FY25") or "4.8")
+        })
     return records
 
-@st.cache_data
+@st.cache_data(ttl=600)
 def load_engagement_history():
-    excel_path = "SSI_AE_Engagement_Mock_REAL_Courses_All_Subsectors_TrainerLed.xlsx"
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    supabase = create_client(url, key)
+    
+    # Query all course runs from AE_Engagement table in Supabase
+    response = supabase.table("AE_Engagement").select("*").execute()
     engagements = []
-    if os.path.exists(excel_path):
-        try:
-            with zipfile.ZipFile(excel_path, 'r') as z:
-                shared_strings = []
-                if 'xl/sharedStrings.xml' in z.namelist():
-                    tree = ET.fromstring(z.read('xl/sharedStrings.xml'))
-                    for elem in tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si'):
-                        parts = [t.text for t in elem.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t') if t.text]
-                        shared_strings.append("".join(parts))
-
-                sheet_tree = ET.fromstring(z.read('xl/worksheets/sheet1.xml'))
-                rows = sheet_tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheetData/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row')
-                
-                for r in rows[1:]:
-                    cells = []
-                    for c in r.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c'):
-                        v = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v')
-                        if v is not None:
-                            val = v.text
-                            if c.attrib.get('t') == 's' and shared_strings:
-                                cells.append(shared_strings[int(val)])
-                            else:
-                                cells.append(val)
-                        else:
-                            is_elem = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}is/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t')
-                            cells.append(is_elem.text if (is_elem is not None and is_elem.text) else "")
-                    
-                    if len(cells) >= 12:
-                        eng_entry = {
-                            "Engagement_ID": cells[0] if len(cells) > 0 else "",
-                            "Sub_Sector": cells[2] if len(cells) > 2 else "",
-                            "Course_Title": cells[3] if len(cells) > 3 else "",
-                            "Delivery_Mode": cells[5] if len(cells) > 5 else "",
-                            "AE_1": cells[11] if len(cells) > 11 else "",
-                            "AE_2": cells[12] if len(cells) > 12 else "",
-                            "AE_3": cells[13] if len(cells) > 13 else ""
-                        }
-                        engagements.append(eng_entry)
-        except Exception:
-            pass
+    for row in response.data:
+        engagements.append({
+            "Engagement_ID": row.get("Engagement ID") or "",
+            "Sub_Sector": row.get("Sub-Sector") or "",
+            "Course_Title": row.get("Course Title") or "",
+            "Delivery_Mode": row.get("Mode of Delivery") or "",
+            "AE_1": row.get("Fictional AE 1") or "",
+            "AE_2": row.get("Fictional AE 2") or "",
+            "AE_3": row.get("Fictional AE 3") or ""
+        })
     return engagements
 
 trainers = load_trainer_profiles()
@@ -123,6 +69,7 @@ engagements = load_engagement_history()
 trainer_map = {t["Name"]: t for t in trainers}
 all_names = [t["Name"] for t in trainers]
 
+# Helper to find engagements for a trainer
 def get_trainer_courses(trainer_name):
     matched_courses = []
     for eng in engagements:
@@ -151,21 +98,12 @@ with col_context:
             st.caption("No custom requirement carried from Discover page. You can still select candidates below to compare.")
 
 with col_pick:
-    # Initialize compare_picker from persistent selected_candidates if entering page
-    if "compare_picker" not in st.session_state:
-        st.session_state["compare_picker"] = [name for name in shortlisted if name in all_names]
-
-    # Callback syncs any user changes on this page back to persistent session state
-    def sync_compare_candidates():
-        st.session_state["selected_candidates"] = st.session_state["compare_picker"]
-
+    default_selection = [name for name in shortlisted if name in all_names]
     selected_aes = st.multiselect(
         "Shortlisted Adult Educators:",
         options=all_names,
-        key="compare_picker",
-        on_change=sync_compare_candidates
+        default=default_selection
     )
-    # Keep persistent state in sync on every run
     st.session_state["selected_candidates"] = selected_aes
 
 # ── 4. Structured Side-by-Side Comparison Matrix ─────────────
