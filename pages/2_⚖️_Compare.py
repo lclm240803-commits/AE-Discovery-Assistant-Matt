@@ -82,9 +82,20 @@ def get_trainer_courses(trainer_name):
             })
     return matched_courses
 
-# ── 3. Active Context & Selection ─────────────────────────────
+# ── 3. Active Context & Selection (Persistent State) ──────────
 officer_requirement = st.session_state.get("last_requirement", "")
-shortlisted = st.session_state.get("selected_candidates", [])
+
+if "selected_candidates" not in st.session_state:
+    st.session_state["selected_candidates"] = []
+
+# Ensure compare_picker is synchronized with selected_candidates
+if "compare_picker" not in st.session_state:
+    st.session_state["compare_picker"] = [
+        name for name in st.session_state["selected_candidates"] if name in all_names
+    ]
+
+def sync_compare_candidates():
+    st.session_state["selected_candidates"] = st.session_state["compare_picker"]
 
 st.subheader("1. Comparison Context & Candidate Selection")
 col_context, col_pick = st.columns([2, 1])
@@ -98,12 +109,14 @@ with col_context:
             st.caption("No custom requirement carried from Discover page. You can still select candidates below to compare.")
 
 with col_pick:
-    default_selection = [name for name in shortlisted if name in all_names]
     selected_aes = st.multiselect(
         "Shortlisted Adult Educators:",
         options=all_names,
-        default=default_selection
+        key="compare_picker",
+        on_change=sync_compare_candidates,
+        placeholder="Choose Adult Educators to compare..."
     )
+    # Mirror into selected_candidates for downstream functions
     st.session_state["selected_candidates"] = selected_aes
 
 # ── 4. Structured Side-by-Side Comparison Matrix ─────────────
