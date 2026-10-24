@@ -49,7 +49,6 @@ def load_engagement_history():
     key = st.secrets["SUPABASE_KEY"]
     supabase = create_client(url, key)
     
-    # Query all course runs from AE_Engagement table in Supabase
     response = supabase.table("AE_Engagement").select("*").execute()
     engagements = []
     for row in response.data:
@@ -88,7 +87,6 @@ officer_requirement = st.session_state.get("last_requirement", "")
 if "selected_candidates" not in st.session_state:
     st.session_state["selected_candidates"] = []
 
-# Ensure compare_picker is synchronized with selected_candidates
 if "compare_picker" not in st.session_state:
     st.session_state["compare_picker"] = [
         name for name in st.session_state["selected_candidates"] if name in all_names
@@ -116,7 +114,6 @@ with col_pick:
         on_change=sync_compare_candidates,
         placeholder="Choose Adult Educators to compare..."
     )
-    # Mirror into selected_candidates for downstream functions
     st.session_state["selected_candidates"] = selected_aes
 
 # ── 4. Structured Side-by-Side Comparison Matrix ─────────────
@@ -169,51 +166,65 @@ else:
     # ── 5. AI Comparative Synthesis & Gap Analysis ───────────────
     st.markdown("---")
     st.subheader("3. AI Comparative Synthesis & Information Gaps")
-    compare_btn = st.button("📊 Run AI Comparative Synthesis", type="primary", use_container_width=True)
+    
+    col_run, col_clear = st.columns([3, 2])
+    with col_run:
+        compare_btn = st.button("📊 Run AI Comparative Synthesis", type="primary", use_container_width=True)
+    with col_clear:
+        clear_compare_btn = st.button("🔄 Clear Comparison Results", use_container_width=True)
 
-    if compare_btn or "last_comparison_text" in st.session_state:
-        if compare_btn:
-            comparison_payload = []
-            for name in selected_aes:
-                p = trainer_map.get(name, {}).copy()
-                p["Documented_Course_Runs"] = get_trainer_courses(name)[:5]
-                comparison_payload.append(p)
-                
-            context_str = json.dumps(comparison_payload, indent=2)
-            api_key = st.secrets.get("OPENAI_API_KEY", "")
-            
-            if not api_key:
-                st.error("OpenAI API Key not found. Please verify `OPENAI_API_KEY` in Streamlit Cloud Settings → Secrets.")
-            else:
-                client = OpenAI(api_key=api_key)
-                system_prompt = (
-                    "You are an objective decision-support assistant for public social service training officers.\n"
-                    "Your task is to compare the shortlisted Adult Educators side-by-side against the officer's training requirements.\n"
-                    "Strict Grounding Rules:\n"
-                    "1. Base all statements strictly on the provided records. Never invent background, experience, or ratings.\n"
-                    "2. Evaluate how each candidate aligns with the requirements.\n"
-                    "3. Highlight key trade-offs between the candidates (e.g., academic qualifications vs. frontline experience vs. past course engagements taught).\n"
-                    "4. Identify any information gaps: explicitly state 'Not documented in available records' for any criteria not found in the profiles.\n"
-                    "5. Maintain a neutral decision-support tone: Never declare a 'winner', 'best candidate', or 'recommended choice'. Remind the officer that final engagement discretion rests with them."
-                )
-
-                with st.spinner("Synthesizing comparative evidence and evaluating trade-offs..."):
-                    try:
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": f"Candidate Records & Engagement History:\n{context_str}\n\nOfficer Requirement:\n{officer_requirement}"}
-                            ],
-                            temperature=0.2
-                        )
-                        st.session_state["last_comparison_text"] = response.choices[0].message.content
-                    except Exception as e:
-                        st.error(f"Error calling LLM: {e}")
-
+    # ── Clear / Reset Logic ────────────────────────────────────
+    if clear_compare_btn:
+        st.session_state["selected_candidates"] = []
+        st.session_state["compare_picker"] = []
+        if "discover_picker" in st.session_state:
+            st.session_state["discover_picker"] = []
         if "last_comparison_text" in st.session_state:
-            with st.container(border=True):
-                st.markdown(st.session_state["last_comparison_text"])
+            del st.session_state["last_comparison_text"]
+        st.rerun()
+
+    if compare_btn:
+        comparison_payload = []
+        for name in selected_aes:
+            p = trainer_map.get(name, {}).copy()
+            p["Documented_Course_Runs"] = get_trainer_courses(name)[:5]
+            comparison_payload.append(p)
+            
+        context_str = json.dumps(comparison_payload, indent=2)
+        api_key = st.secrets.get("OPENAI_API_KEY", "")
+        
+        if not api_key:
+            st.error("OpenAI API Key not found. Please verify `OPENAI_API_KEY` in Streamlit Cloud Settings → Secrets.")
+        else:
+            client = OpenAI(api_key=api_key)
+            system_prompt = (
+                "You are an objective decision-support assistant for public social service training officers.\n"
+                "Your task is to compare the shortlisted Adult Educators side-by-side against the officer's training requirements.\n"
+                "Strict Grounding Rules:\n"
+                "1. Base all statements strictly on the provided records. Never invent background, experience, or ratings.\n"
+                "2. Evaluate how each candidate aligns with the requirements.\n"
+                "3. Highlight key trade-offs between the candidates (e.g., academic qualifications vs. frontline experience vs. past course engagements taught).\n"
+                "4. Identify any information gaps: explicitly state 'Not documented in available records' for any criteria not found in the profiles.\n"
+                "5. Maintain a neutral decision-support tone: Never declare a 'winner', 'best candidate', or 'recommended choice'. Remind the officer that final engagement discretion rests with them."
+            )
+
+            with st.spinner("Synthesizing comparative evidence and evaluating trade-offs..."):
+                try:
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Candidate Records & Engagement History:\n{context_str}\n\nOfficer Requirement:\n{officer_requirement}"}
+                        ],
+                        temperature=0.2
+                    )
+                    st.session_state["last_comparison_text"] = response.choices[0].message.content
+                except Exception as e:
+                    st.error(f"Error calling LLM: {e}")
+
+    if "last_comparison_text" in st.session_state and len(selected_aes) >= 2:
+        with st.container(border=True):
+            st.markdown(st.session_state["last_comparison_text"])
 
 st.markdown("---")
 st.caption("Adult Educator Discovery & Comparison Assistant · AI Champions Bootcamp 2026")
