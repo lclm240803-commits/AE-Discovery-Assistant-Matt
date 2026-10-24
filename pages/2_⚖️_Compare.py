@@ -49,6 +49,7 @@ def load_engagement_history():
     key = st.secrets["SUPABASE_KEY"]
     supabase = create_client(url, key)
     
+    # Query all course runs from AE_Engagement table in Supabase
     response = supabase.table("AE_Engagement").select("*").execute()
     engagements = []
     for row in response.data:
@@ -80,6 +81,15 @@ def get_trainer_courses(trainer_name):
                 "Delivery_Mode": eng["Delivery_Mode"]
             })
     return matched_courses
+
+# ── Callback to reset comparison safely ────────────────────────
+def reset_compare_callback():
+    st.session_state["selected_candidates"] = []
+    st.session_state["compare_picker"] = []
+    if "discover_picker" in st.session_state:
+        st.session_state["discover_picker"] = []
+    if "last_comparison_text" in st.session_state:
+        del st.session_state["last_comparison_text"]
 
 # ── 3. Active Context & Selection (Persistent State) ──────────
 officer_requirement = st.session_state.get("last_requirement", "")
@@ -171,17 +181,11 @@ else:
     with col_run:
         compare_btn = st.button("📊 Run AI Comparative Synthesis", type="primary", use_container_width=True)
     with col_clear:
-        clear_compare_btn = st.button("🔄 Clear Comparison Results", use_container_width=True)
-
-    # ── Clear / Reset Logic ────────────────────────────────────
-    if clear_compare_btn:
-        st.session_state["selected_candidates"] = []
-        st.session_state["compare_picker"] = []
-        if "discover_picker" in st.session_state:
-            st.session_state["discover_picker"] = []
-        if "last_comparison_text" in st.session_state:
-            del st.session_state["last_comparison_text"]
-        st.rerun()
+        clear_compare_btn = st.button(
+            "🔄 Clear Comparison Results", 
+            on_click=reset_compare_callback, 
+            use_container_width=True
+        )
 
     if compare_btn:
         comparison_payload = []
