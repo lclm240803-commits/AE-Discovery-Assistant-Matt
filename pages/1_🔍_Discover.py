@@ -1,9 +1,7 @@
 import streamlit as st
 import json
-import os
-import zipfile
-import xml.etree.ElementTree as ET
 from openai import OpenAI
+from supabase import create_client
 from utility import check_password
 
 # ── 1. Page Configuration & Gatekeeper ────────────────────────
@@ -21,62 +19,30 @@ st.title("🔍 Feature 1: Semantic Discovery of Adult Educators")
 st.caption("AI-Assisted Capability Matching · Decision Support for Training Officers")
 st.markdown("---")
 
-# ── 2. Native Robust Data Loader (AppLocker-Compliant) ────────
-@st.cache_data
+# ── 2. Supabase Cloud Database Loader ─────────────────────────
+@st.cache_data(ttl=600)
 def load_all_ae_records():
-    excel_path = "SSI_AE_Mock_Dataset_100_Trainers.xlsx"
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    supabase = create_client(url, key)
+    
+    # Query all 100 Adult Educator records from AE_Mock_Dataset in Supabase
+    response = supabase.table("AE_Mock_Dataset").select("*").execute()
     records = []
-
-    if os.path.exists(excel_path):
-        try:
-            with zipfile.ZipFile(excel_path, 'r') as z:
-                # Read shared strings table
-                shared_strings = []
-                if 'xl/sharedStrings.xml' in z.namelist():
-                    tree = ET.fromstring(z.read('xl/sharedStrings.xml'))
-                    for elem in tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si'):
-                        parts = [t.text for t in elem.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t') if t.text]
-                        shared_strings.append("".join(parts))
-
-                # Read 'sheet1.xml' (AE Mock Data)
-                sheet_tree = ET.fromstring(z.read('xl/worksheets/sheet1.xml'))
-                rows = sheet_tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheetData/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row')
-                
-                if len(rows) >= 4:
-                    for r in rows[3:]:
-                        cells = []
-                        for c in r.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c'):
-                            v = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v')
-                            if v is not None:
-                                val = v.text
-                                if c.attrib.get('t') == 's' and shared_strings:
-                                    cells.append(shared_strings[int(val)])
-                                else:
-                                    cells.append(val)
-                            else:
-                                is_elem = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}is/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t')
-                                if is_elem is not None and is_elem.text:
-                                    cells.append(is_elem.text)
-                                else:
-                                    cells.append("")
-
-                        if cells and len(cells) >= 11:
-                            rec = {
-                                "Name": cells[0] if len(cells) > 0 else "Unknown",
-                                "Agency_or_Org": cells[7] if len(cells) > 7 else "Social Service Institute",
-                                "Designation": cells[8] if len(cells) > 8 else "Adult Educator",
-                                "Sub_Sector": cells[9] if len(cells) > 9 else "General",
-                                "Expertise": cells[10] if len(cells) > 10 else "General Facilitation",
-                                "Qualifications": cells[11] if len(cells) > 11 else "Professional Degree",
-                                "Sector_Exp_Yrs": cells[15] if len(cells) > 15 else "10",
-                                "Training_Exp_Yrs": cells[16] if len(cells) > 16 else "5",
-                                "ACTA_Certified": cells[21] if len(cells) > 21 else "Yes",
-                                "Avg_Rating": cells[27] if len(cells) > 27 else "4.8"
-                            }
-                            records.append(rec)
-        except Exception:
-            pass
-
+    
+    for row in response.data:
+        records.append({
+            "Name": row.get("Full Name") or "Unknown",
+            "Agency_or_Org": row.get("Organisation") or "Social Service Institute",
+            "Designation": row.get("Designation") or "Adult Educator",
+            "Sub_Sector": row.get("Sub-Sector") or "General",
+            "Expertise": row.get("Domain Expertise") or "General Facilitation",
+            "Qualifications": row.get("Highest Academic Qualifications") or "Professional Degree",
+            "Sector_Exp_Yrs": str(row.get("Years in Social Service Sector/Relevant Sector") or "10"),
+            "Training_Exp_Yrs": str(row.get("Training Experience") or "5"),
+            "ACTA_Certified": row.get("ACTA/ACLP Certified") or "Yes",
+            "Avg_Rating": str(row.get("Ave AE effectiveness in FY25") or "4.8")
+        })
     return records
 
 ae_records = load_all_ae_records()
@@ -96,10 +62,10 @@ st.subheader("1. Training Requirement Input")
 col_query, col_info = st.columns([3, 1])
 
 with col_query:
+    default_prompt = st.session_state.get("last_requirement", "")
     user_requirement = st.text_area(
         "Describe your course objectives, target audience, or desired competencies:",
-        value=st.session_state.get("last_requirement", ""),
-        key="search_input_text",
+        value=default_prompt,
         height=130,
         placeholder="e.g., Seeking an experienced trainer with a clinical or social work background in trauma-informed care and counselling for youth-at-risk caseworkers."
     )
@@ -113,7 +79,6 @@ with col_query:
     # ── Reset / Clean Slate Logic ─────────────────────────────
     if reset_clicked:
         st.session_state["last_requirement"] = ""
-        st.session_state["search_input_text"] = ""
         st.session_state["selected_candidates"] = []
         st.session_state["discover_picker"] = []
         st.session_state["ai_suggested_candidates"] = []
@@ -127,17 +92,16 @@ with col_query:
 
 with col_info:
     with st.container(border=True):
-        st.markdown("**Dataset Overview**")
+        st.markdown("**Cloud Database Scope**")
         st.metric("Total AE Profiles", len(ae_records))
-        st.caption("Matches natural-language needs against verified competency records.")
+        st.caption("Live PostgreSQL records fetched via Supabase API.")
 
 # ── 4. Retrieval & Analysis Execution ─────────────────────────
 if find_clicked:
-    search_query = st.session_state.get("search_input_text", "").strip()
-    if not search_query:
+    if not user_requirement.strip():
         st.warning("⚠️ Please enter a training requirement before searching.")
     else:
-        st.session_state["last_requirement"] = search_query
+        st.session_state["last_requirement"] = user_requirement
         
         context_str = json.dumps(ae_records[:35], indent=2)
         api_key = st.secrets.get("OPENAI_API_KEY", "")
@@ -150,26 +114,14 @@ if find_clicked:
             system_prompt = (
                 "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
                 "Your role is decision support ONLY. Follow these strict domain & grounding rules:\n\n"
-                "RULE 1: TARGET AUDIENCE VS. SPECIALISED SKILL EVALUATION (HYBRID QUERIES)\n"
-                "- If the query targets a valid social service population (e.g., 'children and youth', 'seniors', 'vulnerable families') but specifies an unsupported physical/technical skill (e.g., martial arts, combat sports, coding, culinary arts):\n"
-                "  1. Acknowledge that the target audience (e.g., Children & Youth) is a recognized social service sub-sector.\n"
-                "  2. Explicitly state under 'Information Gaps' that training certifications in the specific activity (e.g., martial arts) and requested tenure (e.g., 20 years) are NOT documented in available AE records.\n"
-                "  3. Note that available youth trainers specialize in casework, mentoring, and trauma-informed care rather than physical sports instruction.\n"
-                "  4. Do NOT recommend or shortlist any candidates for an unsupported skill requirement.\n\n"
-                "RULE 2: STRICT REJECTION FOR PURE NON-HUMAN SERVICES\n"
-                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services technical or industrial domain (e.g., Mechanical Engineering, Artificial Intelligence, Cybersecurity, Aviation Mechanics, Construction, Finance/Accounting, Commercial Real Estate):\n"
-                "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
-                "  2. State clearly that the requested field is a technical/commercial discipline outside the social service training scope.\n"
-                "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
-                "  4. Explicitly state this in 'Information Gaps'.\n\n"
-                "RULE 3: MANDATORY SEMANTIC BRIDGING FOR CARE & HUMAN SERVICES\n"
-                "- Any community, caregiving, health & wellness support, or psychosocial topic must be bridged to the closest available sub-sectors:\n"
-                "  • 'Palliative care' / 'End-of-life' / 'Hospice' / 'Bereavement' / 'Grief' -> Semantically bridge to Mental Health & Caregiving (caregiver support, crisis intervention, de-escalation) or Family (caregiver engagement).\n"
+                "RULE 1: MANDATORY SEMANTIC BRIDGING FOR CARE, COMMUNITY & HUMAN SERVICES\n"
+                "- ALL caregiving, health & wellness support, end-of-life care, and psychosocial topics ARE WITHIN THE SOCIAL SERVICE SCOPE. You MUST bridge them to available sub-sectors:\n"
+                "  • 'Palliative care' / 'End-of-life' / 'Hospice' / 'Bereavement' / 'Grief' -> Semantically bridge to Mental Health & Caregiving (caregiver support, suicide/crisis intervention, de-escalation) or Family (caregiver engagement).\n"
                 "  • 'Eldercare' / 'Gerontology' / 'Dementia' / 'Aging' -> Semantically bridge to Mental Health & Caregiving or Family (caregiver support).\n"
                 "  • 'Infant care' / 'Early childhood' / 'Babies' -> Semantically bridge to Foster Parents (attachment, trauma-informed caregiving) or Family (parenting).\n"
                 "  • 'Youth crime' / 'Delinquency' / 'School refusal' -> Semantically bridge to Children & Youth.\n"
                 "- When bridging, ALWAYS identify the 2 to 3 closest Adult Educators from that bridged sub-sector.\n"
-                "- If the user requests high years of experience (e.g., 20+ or 30+ years), surface the most senior available trainers in that bridged domain (e.g., senior trainers with 15-26 years training exp and 20-30 years sector exp). DO NOT reject the query; simply explain the experience difference in 'Documented Match Rationale' and note the experience requirement in 'Information Gaps'.\n"
+                "- If the user requests high years of experience (e.g. 20+ or 30+ years), surface the most senior available trainers in that bridged domain (e.g., senior trainers with 15-26 years training exp and 20-30 years sector exp). DO NOT reject the query; simply explain the experience difference in 'Documented Match Rationale' and note the 30-year requirement in 'Information Gaps'.\n"
                 "- Format each candidate strictly as:\n"
                 "   Candidate X: [Exact Full Name]\n"
                 "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
@@ -177,7 +129,13 @@ if find_clicked:
                 "   - **Documented Match Rationale**: [Reasoning, including semantic bridge explanation]\n"
                 "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
                 "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
-                "RULE 4: NEUTRAL DECISION SUPPORT\n"
+                "RULE 2: STRICT REJECTION FOR NON-HUMAN SERVICES ONLY\n"
+                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services technical or industrial domain (e.g., Civil/Mechanical Engineering, Artificial Intelligence/Machine Learning, Computer Hardware, Aviation, Construction, Finance/Accounting, Real Estate Sales):\n"
+                "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
+                "  2. State clearly that the requested field is a technical/commercial discipline outside the social service training scope.\n"
+                "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
+                "  4. Explicitly state this in 'Information Gaps'.\n\n"
+                "RULE 3: NEUTRAL DECISION SUPPORT\n"
                 "- Never declare any candidate as 'the best' or 'winner'."
             )
 
@@ -187,7 +145,7 @@ if find_clicked:
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"AE Records:\n{context_str}\n\nOfficer Training Requirement:\n{search_query}"}
+                            {"role": "user", "content": f"AE Records:\n{context_str}\n\nOfficer Training Requirement:\n{user_requirement}"}
                         ],
                         temperature=0.2
                     )
@@ -225,9 +183,8 @@ if "discovery_analysis" in st.session_state:
     ai_suggestions = st.session_state.get("ai_suggested_candidates", [])
     
     if not ai_suggestions:
-        st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain or specialized skill is not documented in social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
+        st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain is outside social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
     else:
-        # Prompt user to accept the shortlisted candidates
         st.markdown("---")
         with st.container(border=True):
             st.markdown("#### 🎯 Would you like to select the shortlisted candidates for comparison?")
@@ -244,7 +201,6 @@ if "discovery_analysis" in st.session_state:
             with c_no:
                 if st.button("❌ No, start new search", use_container_width=True):
                     st.session_state["last_requirement"] = ""
-                    st.session_state["search_input_text"] = ""
                     st.session_state["selected_candidates"] = []
                     st.session_state["discover_picker"] = []
                     st.session_state["ai_suggested_candidates"] = []
@@ -281,7 +237,7 @@ else:
 # ── 7. Enhanced Profile Explorer (Natural Cards) ──────────────
 st.markdown("---")
 with st.expander("👤 Browse Adult Educator Profiles Directory", expanded=False):
-    st.caption("Search or preview trainer credentials from the synthetic knowledge base.")
+    st.caption("Search or preview trainer credentials from the Supabase knowledge base.")
     
     search_filter = st.text_input("Filter profiles by name or keyword:", placeholder="e.g. Tan Wei Ming, Youth, Trauma...")
     
