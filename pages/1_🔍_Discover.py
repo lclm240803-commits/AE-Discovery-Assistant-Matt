@@ -19,14 +19,14 @@ st.title("🔍 Feature 1: Semantic Discovery of Adult Educators")
 st.caption("AI-Assisted Capability Matching · Decision Support for Training Officers")
 st.markdown("---")
 
-# ── 2. Supabase Cloud Database Loader ─────────────────────────
+# ── 2. Cloud Database Loader (Supabase External Storage) ────────
 @st.cache_data(ttl=600)
 def load_all_ae_records():
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
     supabase = create_client(url, key)
     
-    # Query all 100 Adult Educator records from AE_Mock_Dataset in Supabase
+    # Query all 100 Adult Educator records from Supabase
     response = supabase.table("AE_Mock_Dataset").select("*").execute()
     records = []
     
@@ -45,7 +45,12 @@ def load_all_ae_records():
         })
     return records
 
-ae_records = load_all_ae_records()
+try:
+    ae_records = load_all_ae_records()
+except Exception as e:
+    st.error(f"Error connecting to Supabase database: {e}")
+    ae_records = []
+
 candidate_options = [r["Name"] for r in ae_records]
 
 # ── Session State Management (Cross-Page Persistent) ─────────
@@ -67,7 +72,7 @@ with col_query:
         "Describe your course objectives, target audience, or desired competencies:",
         value=default_prompt,
         height=130,
-        placeholder="e.g., Seeking an experienced trainer with a clinical or social work background in trauma-informed care and counselling for youth-at-risk caseworkers."
+        placeholder="e.g., Looking for an Adult Educator who has experience working with persons with disabilities and special needs for the past 5 years."
     )
     
     col_btn1, col_btn2 = st.columns([3, 2])
@@ -103,7 +108,21 @@ if find_clicked:
     else:
         st.session_state["last_requirement"] = user_requirement
         
-        context_str = json.dumps(ae_records[:35], indent=2)
+        # Feed all 100 concise profiles into the LLM context (well within token limits)
+        compact_profiles = [
+            {
+                "Name": r["Name"],
+                "Sub_Sector": r["Sub_Sector"],
+                "Expertise": r["Expertise"],
+                "Qualifications": r["Qualifications"],
+                "Sector_Exp_Yrs": r["Sector_Exp_Yrs"],
+                "Training_Exp_Yrs": r["Training_Exp_Yrs"],
+                "ACTA_Certified": r["ACTA_Certified"],
+                "Avg_Rating": r["Avg_Rating"]
+            }
+            for r in ae_records
+        ]
+        context_str = json.dumps(compact_profiles, indent=1)
         api_key = st.secrets.get("OPENAI_API_KEY", "")
         
         if not api_key:
@@ -114,38 +133,41 @@ if find_clicked:
             system_prompt = (
                 "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
                 "Your role is decision support ONLY. Follow these strict domain & grounding rules:\n\n"
-                "RULE 1: MANDATORY SEMANTIC BRIDGING FOR CARE, COMMUNITY & HUMAN SERVICES\n"
-                "- ALL caregiving, health & wellness support, end-of-life care, and psychosocial topics ARE WITHIN THE SOCIAL SERVICE SCOPE. You MUST bridge them to available sub-sectors:\n"
-                "  • 'Palliative care' / 'End-of-life' / 'Hospice' / 'Bereavement' / 'Grief' -> Semantically bridge to Mental Health & Caregiving (caregiver support, suicide/crisis intervention, de-escalation) or Family (caregiver engagement).\n"
-                "  • 'Eldercare' / 'Gerontology' / 'Dementia' / 'Aging' -> Semantically bridge to Mental Health & Caregiving or Family (caregiver support).\n"
-                "  • 'Infant care' / 'Early childhood' / 'Babies' -> Semantically bridge to Foster Parents (attachment, trauma-informed caregiving) or Family (parenting).\n"
-                "  • 'Youth crime' / 'Delinquency' / 'School refusal' -> Semantically bridge to Children & Youth.\n"
-                "- When bridging, ALWAYS identify the 2 to 3 closest Adult Educators from that bridged sub-sector.\n"
-                "- If the user requests high years of experience (e.g. 20+ or 30+ years), surface the most senior available trainers in that bridged domain (e.g., senior trainers with 15-26 years training exp and 20-30 years sector exp). DO NOT reject the query; simply explain the experience difference in 'Documented Match Rationale' and note the 30-year requirement in 'Information Gaps'.\n"
+                "RULE 1: CORE SOCIAL SERVICE DOMAINS (NEVER REJECT)\n"
+                "- The database contains social service Adult Educators across key sectors:\n"
+                "  1. Disability & Special Needs (Intellectual disability, autism spectrum, physical/sensory disability, assistive technology, inclusive employment, SPED)\n"
+                "  2. Children & Youth (Youth-at-risk, trauma-informed practice, delinquency, school guidance, casework)\n"
+                "  3. Family (Parenting, family violence, marital counselling, caregiver engagement)\n"
+                "  4. Mental Health & Caregiving (Crisis intervention, suicide prevention, eldercare, dementia, palliative care, bereavement, caregiver burnout)\n"
+                "  5. Volunteer Management & Sector Leadership\n"
+                "- Any query mentioning disability, special needs, youths, seniors, family, or caregiving IS A VALID SOCIAL SERVICE TOPIC. NEVER state that these are technical or commercial disciplines.\n\n"
+                "RULE 2: CANDIDATE MATCHING & GROUNDING\n"
+                "- Search the provided AE records and identify the 2 to 3 most relevant Adult Educators.\n"
+                "- If the user specifies an experience tenure (e.g. 5 years or 20 years), surface the closest matching trainers in that domain and transparently explain any variance under 'Documented Match Rationale' and 'Information Gaps'.\n"
                 "- Format each candidate strictly as:\n"
                 "   Candidate X: [Exact Full Name]\n"
                 "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
                 "   - **Sub-Sector Alignment**: [Alignment]\n"
-                "   - **Documented Match Rationale**: [Reasoning, including semantic bridge explanation]\n"
+                "   - **Documented Match Rationale**: [Evidence-based justification from profile]\n"
                 "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
                 "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
-                "RULE 2: STRICT REJECTION FOR NON-HUMAN SERVICES ONLY\n"
-                "- If and ONLY if the user's query asks for an entirely unrelated, non-human-services technical or industrial domain (e.g., Civil/Mechanical Engineering, Artificial Intelligence/Machine Learning, Computer Hardware, Aviation, Construction, Finance/Accounting, Real Estate Sales):\n"
+                "RULE 3: STRICT REJECTION FOR NON-HUMAN SERVICES ONLY\n"
+                "- ONLY if the user's query asks for an entirely unrelated, non-social-service industrial or corporate field (e.g., Civil Engineering, Machine Learning Engineering, Aviation Flight Dynamics, Mechanical Construction, Forex/Crypto Trading, Commercial Real Estate Sales):\n"
                 "  1. Start your response with 'NO_RELEVANT_DOMAIN'.\n"
-                "  2. State clearly that the requested field is a technical/commercial discipline outside the social service training scope.\n"
-                "  3. Do NOT recommend, name, or shortlist ANY candidates.\n"
+                "  2. State clearly that the requested field is outside social service training scope.\n"
+                "  3. Do NOT recommend, name, or shortlist any candidates.\n"
                 "  4. Explicitly state this in 'Information Gaps'.\n\n"
-                "RULE 3: NEUTRAL DECISION SUPPORT\n"
+                "RULE 4: NEUTRAL DECISION SUPPORT\n"
                 "- Never declare any candidate as 'the best' or 'winner'."
             )
 
-            with st.spinner("Analyzing AE profiles and synthesizing evidence..."):
+            with st.spinner("Analyzing AE profiles across all 100 records..."):
                 try:
                     response = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"AE Records:\n{context_str}\n\nOfficer Training Requirement:\n{user_requirement}"}
+                            {"role": "user", "content": f"All 100 AE Records:\n{context_str}\n\nOfficer Training Requirement:\n{user_requirement}"}
                         ],
                         temperature=0.2
                     )
@@ -167,11 +189,6 @@ if find_clicked:
                                 extracted_names.append(name)
                     
                     st.session_state["ai_suggested_candidates"] = extracted_names[:3]
-                    # Pre-select all recommended candidates by default for ease of use
-                    st.session_state["selected_candidates"] = extracted_names[:3]
-                    st.session_state["discover_picker"] = extracted_names[:3]
-                    if "compare_picker" in st.session_state:
-                        st.session_state["compare_picker"] = extracted_names[:3]
 
                 except Exception as e:
                     st.error(f"Error calling LLM: {e}")
@@ -190,49 +207,21 @@ if "discovery_analysis" in st.session_state:
     if not ai_suggestions:
         st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain is outside social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
     else:
-        # Interactive Candidate Picking Container with Single Buttons
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🎯 Select AEs to Compare")
-            st.caption("Click individual candidate buttons below to select or deselect them for comparison:")
+            st.markdown("#### 🎯 Would you like to select the shortlisted candidates for comparison?")
+            st.write(f"Recommended: **{', '.join(ai_suggestions)}**")
             
-            # Render a single button for each recommended AE
-            cols_candidates = st.columns(len(ai_suggestions))
-            for idx, candidate in enumerate(ai_suggestions):
-                is_selected = candidate in st.session_state.get("selected_candidates", [])
-                btn_label = f"✅ {candidate}" if is_selected else f"➕ {candidate}"
-                btn_type = "primary" if is_selected else "secondary"
-                
-                with cols_candidates[idx]:
-                    if st.button(btn_label, key=f"btn_ae_{candidate}", type=btn_type, use_container_width=True):
-                        current = list(st.session_state.get("selected_candidates", []))
-                        if candidate in current:
-                            current.remove(candidate)
-                        else:
-                            current.append(candidate)
-                        
-                        st.session_state["selected_candidates"] = current
-                        st.session_state["discover_picker"] = current
-                        if "compare_picker" in st.session_state:
-                            st.session_state["compare_picker"] = current
-                        st.rerun()
-
-            # Action Bar
-            current_count = len(st.session_state.get("selected_candidates", []))
-            st.markdown("")
-            c_proceed, c_reset = st.columns([3, 2])
-            with c_proceed:
-                can_proceed = current_count >= 2
-                proceed_btn = st.button(
-                    f"⚖️ Proceed to Compare with Selected ({current_count})",
-                    type="primary" if can_proceed else "secondary",
-                    disabled=not can_proceed,
-                    use_container_width=True
-                )
-                if proceed_btn:
+            c_yes, c_no, _ = st.columns([1, 1, 2])
+            with c_yes:
+                if st.button("✅ Yes, proceed to Compare", type="primary", use_container_width=True):
+                    st.session_state["selected_candidates"] = ai_suggestions
+                    st.session_state["discover_picker"] = ai_suggestions
+                    if "compare_picker" in st.session_state:
+                        st.session_state["compare_picker"] = ai_suggestions
                     st.switch_page("pages/2_⚖️_Compare.py")
-            with c_reset:
-                if st.button("❌ Clear Search & Selection", use_container_width=True):
+            with c_no:
+                if st.button("❌ No, start new search", use_container_width=True):
                     st.session_state["last_requirement"] = ""
                     st.session_state["selected_candidates"] = []
                     st.session_state["discover_picker"] = []
@@ -270,9 +259,9 @@ else:
 # ── 7. Enhanced Profile Explorer (Natural Cards) ──────────────
 st.markdown("---")
 with st.expander("👤 Browse Adult Educator Profiles Directory", expanded=False):
-    st.caption("Search or preview trainer credentials from the Supabase knowledge base.")
+    st.caption("Search or preview trainer credentials from the synthetic knowledge base.")
     
-    search_filter = st.text_input("Filter profiles by name or keyword:", placeholder="e.g. Tan Wei Ming, Youth, Trauma...")
+    search_filter = st.text_input("Filter profiles by name or keyword:", placeholder="e.g. Disability, Youth, Trauma...")
     
     displayed_records = ae_records
     if search_filter:
