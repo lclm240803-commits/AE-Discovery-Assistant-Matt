@@ -108,7 +108,7 @@ if find_clicked:
     else:
         st.session_state["last_requirement"] = user_requirement
         
-        # Feed all 100 concise profiles into the LLM context (well within token limits)
+        # Prepare all concise profiles for the LLM
         compact_profiles = [
             {
                 "Name": r["Name"],
@@ -161,13 +161,13 @@ if find_clicked:
                 "- Never declare any candidate as 'the best' or 'winner'."
             )
 
-            with st.spinner("Analyzing AE profiles across all 100 records..."):
+            with st.spinner("Analyzing AE profiles across all records..."):
                 try:
                     response = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"All 100 AE Records:\n{context_str}\n\nOfficer Training Requirement:\n{user_requirement}"}
+                            {"role": "user", "content": f"All AE Records:\n{context_str}\n\nOfficer Training Requirement:\n{user_requirement}"}
                         ],
                         temperature=0.2
                     )
@@ -188,7 +188,16 @@ if find_clicked:
                             if name not in extracted_names:
                                 extracted_names.append(name)
                     
-                    st.session_state["ai_suggested_candidates"] = extracted_names[:3]
+                    # Auto-select the top 2-3 matched candidates immediately
+                    top_matches = extracted_names[:3]
+                    st.session_state["ai_suggested_candidates"] = top_matches
+                    if top_matches:
+                        st.session_state["selected_candidates"] = top_matches
+                        st.session_state["discover_picker"] = top_matches
+                        if "compare_picker" in st.session_state:
+                            st.session_state["compare_picker"] = top_matches
+                    
+                    st.rerun()
 
                 except Exception as e:
                     st.error(f"Error calling LLM: {e}")
@@ -207,21 +216,22 @@ if "discovery_analysis" in st.session_state:
     if not ai_suggestions:
         st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain is outside social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
     else:
+        # Prompt user to confirm or proceed
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🎯 Would you like to select the shortlisted candidates for comparison?")
-            st.write(f"Recommended: **{', '.join(ai_suggestions)}**")
+            st.markdown("#### 🎯 Shortlisted Candidates for Comparison")
+            st.write(f"Pre-selected: **{', '.join(ai_suggestions)}**")
             
             c_yes, c_no, _ = st.columns([1, 1, 2])
             with c_yes:
-                if st.button("✅ Yes, proceed to Compare", type="primary", use_container_width=True):
+                if st.button("✅ Proceed to Compare Page", type="primary", use_container_width=True):
                     st.session_state["selected_candidates"] = ai_suggestions
                     st.session_state["discover_picker"] = ai_suggestions
                     if "compare_picker" in st.session_state:
                         st.session_state["compare_picker"] = ai_suggestions
                     st.switch_page("pages/2_⚖️_Compare.py")
             with c_no:
-                if st.button("❌ No, start new search", use_container_width=True):
+                if st.button("❌ Clear & New Search", use_container_width=True):
                     st.session_state["last_requirement"] = ""
                     st.session_state["selected_candidates"] = []
                     st.session_state["discover_picker"] = []
@@ -239,12 +249,18 @@ st.markdown("---")
 st.subheader("3. Shortlist Candidates for Comparison")
 st.caption("Selected candidates will be carried over to the **2 ⚖️ Compare** page.")
 
+# Ensure discover_picker has valid items
+current_selected = [
+    name for name in st.session_state.get("selected_candidates", []) if name in candidate_options
+]
+
 def sync_discover_candidates():
     st.session_state["selected_candidates"] = st.session_state["discover_picker"]
 
 selected_aes = st.multiselect(
     "Select at least 2 Adult Educators to compare side-by-side:",
     options=candidate_options,
+    default=current_selected,
     key="discover_picker",
     on_change=sync_discover_candidates,
     placeholder="Choose Adult Educators from recommendations or directory..."
@@ -252,7 +268,7 @@ selected_aes = st.multiselect(
 st.session_state["selected_candidates"] = selected_aes
 
 if len(selected_aes) >= 2:
-    st.success(f"✅ **{len(selected_aes)} candidates shortlisted!** You can now proceed to the **2 ⚖️ Compare** page in the left sidebar.")
+    st.success(f"✅ **{len(selected_aes)} candidates shortlisted ({', '.join(selected_aes)})!** You can now proceed to the **2 ⚖️ Compare** page in the left sidebar.")
 else:
     st.info("ℹ️ Select at least 2 candidates to enable full comparative analysis.")
 
