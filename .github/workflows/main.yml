@@ -2,9 +2,9 @@ name: Keep Supabase Alive
 
 on:
   schedule:
-    # Runs at 00:00 UTC on Mondays and Thursdays (every 3–4 days)
+    # Runs at 00:00 UTC on Mondays and Thursdays (every 3-4 days)
     - cron: '0 0 * * 1,4'
-  workflow_dispatch: # Allows you to manually trigger it anytime to test
+  workflow_dispatch:
 
 jobs:
   ping:
@@ -12,6 +12,4 @@ jobs:
     steps:
       - name: Ping Supabase REST API
         run: |
-          curl -s -X GET "https://<your-project-ref>.supabase.co/rest/v1/AE_Mock_Dataset?select=count" \
-               -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
-               -H "Authorization: Bearer ${{ secrets.SUPABASE_KEY }}"
+          curl -i -X GET "https://omcpabdkgeevdrvoomww.supabase.co/rest/v1/AE_Mock_Dataset?select=count" -H "apikey: ${{ secrets.SUPABASE_KEY }}"
