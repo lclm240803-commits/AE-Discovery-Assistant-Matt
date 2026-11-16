@@ -19,6 +19,19 @@ st.title("🔍 Feature 1: Semantic Discovery of Adult Educators")
 st.caption("AI-Assisted Capability Matching · Decision Support for Training Officers")
 st.markdown("---")
 
+# Helper to safely read column values regardless of slight header variations in Supabase
+def get_col(row, possible_keys, default_val):
+    for k in possible_keys:
+        if k in row and row[k] not in (None, ""):
+            return row[k]
+    # Case-insensitive fallback scan
+    row_lower = {str(k).strip().lower(): v for k, v in row.items() if v not in (None, "")}
+    for k in possible_keys:
+        k_low = k.strip().lower()
+        if k_low in row_lower:
+            return row_lower[k_low]
+    return default_val
+
 # ── 2. Cloud Database Loader (Supabase External Storage) ────────
 @st.cache_data(ttl=600)
 def load_all_ae_records():
@@ -31,19 +44,30 @@ def load_all_ae_records():
     records = []
     
     for idx, row in enumerate(response.data, start=1):
+        name_val = get_col(row, ["Full Name", "Name", "Trainer Name", "AE Name"], "Unknown")
+        org_val = get_col(row, ["Organisation", "Organization", "Agency", "Agency_or_Org"], "Social Service Institute")
+        desig_val = get_col(row, ["Designation", "Role", "Title"], "Adult Educator")
+        subsector_val = get_col(row, ["Sub-Sector", "Sub_Sector", "Sub Sector", "Subsector", "Sector"], "Social Service")
+        exp_val = get_col(row, ["Domain Expertise", "Area of Specialisation / Core Expertise", "Expertise", "Specialisation"], "General Facilitation")
+        qual_val = get_col(row, ["Highest Academic Qualifications", "Qualifications", "Academic Qualifications"], "Professional Degree")
+        sec_yrs = get_col(row, ["Years in Social Service Sector/Relevant Sector", "Sector_Exp_Yrs", "Sector Experience"], "10")
+        trn_yrs = get_col(row, ["Training Experience", "Training_Exp_Yrs", "Years of Training Experience"], "5")
+        acta_val = get_col(row, ["ACTA/ACLP Certified", "ACTA_Certified", "ACTA/ACLP"], "Yes")
+        rating_val = get_col(row, ["Ave AE effectiveness in FY25", "Avg_Rating", "AE Effectiveness"], "4.8")
+
         records.append({
             "Record_ID": f"AE-{idx:03d}",
-            "Source_Table": "Supabase: AE_Mock_Dataset",
-            "Name": row.get("Full Name") or "Unknown",
-            "Agency_or_Org": row.get("Organisation") or "Social Service Institute",
-            "Designation": row.get("Designation") or "Adult Educator",
-            "Sub_Sector": row.get("Sub-Sector") or "General",
-            "Expertise": row.get("Domain Expertise") or "General Facilitation",
-            "Qualifications": row.get("Highest Academic Qualifications") or "Professional Degree",
-            "Sector_Exp_Yrs": str(row.get("Years in Social Service Sector/Relevant Sector") or "10"),
-            "Training_Exp_Yrs": str(row.get("Training Experience") or "5"),
-            "ACTA_Certified": row.get("ACTA/ACLP Certified") or "Yes",
-            "Avg_Rating": str(row.get("Ave AE effectiveness in FY25") or "4.8")
+            "Source_Table": f"Supabase: AE_Mock_Dataset (Row {idx})",
+            "Name": str(name_val),
+            "Agency_or_Org": str(org_val),
+            "Designation": str(desig_val),
+            "Sub_Sector": str(subsector_val),
+            "Expertise": str(exp_val),
+            "Qualifications": str(qual_val),
+            "Sector_Exp_Yrs": str(sec_yrs),
+            "Training_Exp_Yrs": str(trn_yrs),
+            "ACTA_Certified": str(acta_val),
+            "Avg_Rating": str(rating_val)
         })
     return records
 
@@ -102,7 +126,7 @@ with col_info:
     with st.container(border=True):
         st.markdown("**Cloud Database Scope**")
         st.metric("Total AE Profiles", len(ae_records))
-        st.caption("Live PostgreSQL records fetched via Supabase API (`AE_Mock_Dataset`).")
+        st.caption("Live PostgreSQL records fetched via Supabase API (AE_Mock_Dataset).")
 
 # ── 4. Retrieval & Analysis Execution ─────────────────────────
 if find_clicked:
@@ -115,6 +139,7 @@ if find_clicked:
         compact_profiles = [
             {
                 "Record_ID": r["Record_ID"],
+                "Source_Reference": f"{r['Record_ID']} | {r['Source_Table']}",
                 "Name": r["Name"],
                 "Designation": r["Designation"],
                 "Organisation": r["Agency_or_Org"],
@@ -132,7 +157,7 @@ if find_clicked:
         api_key = st.secrets.get("OPENAI_API_KEY", "")
         
         if not api_key:
-            st.error("OpenAI API Key not found. Please configure `OPENAI_API_KEY` in Streamlit Cloud Settings → Secrets.")
+            st.error("OpenAI API Key not found. Please configure OPENAI_API_KEY in Streamlit Cloud Settings → Secrets.")
         else:
             client = OpenAI(api_key=api_key)
             
@@ -149,13 +174,13 @@ if find_clicked:
                 "- Any query mentioning disability, special needs, youths, seniors, family, or caregiving IS A VALID SOCIAL SERVICE TOPIC. NEVER state that these are technical or commercial disciplines.\n\n"
                 "RULE 2: CANDIDATE MATCHING & EXPLICIT SOURCE CITATION\n"
                 "- Search the provided AE records and identify the 2 to 3 most relevant Adult Educators.\n"
-                "- You MUST explicitly cite the candidate's Record_ID (e.g. AE-004) and quote their exact 'Domain_Expertise' and 'Qualifications' fields so the officer can trace every claim back to the source record.\n"
+                "- You MUST explicitly output the candidate's exact Source_Reference (e.g. 'AE-001 | Supabase: AE_Mock_Dataset (Row 1)') and quote their exact 'Domain_Expertise' and 'Qualifications' fields.\n"
                 "- If the user specifies an experience tenure (e.g. 5 years or 20 years), surface the closest matching trainers in that domain and transparently explain any variance under 'Documented Match Rationale' and 'Information Gaps'.\n"
                 "- Format each candidate strictly as:\n"
                 "   Candidate X: [Exact Full Name] ([Record_ID])\n"
                 "   - **Candidate Name, Designation & Organisation**: [Exact Full Name], [Designation] ([Organisation])\n"
-                "   - **Source Record Reference**: ``\n"
-                "   - **Sub-Sector & Documented Expertise Field**: Sub-Sector: `[Sub_Sector]` | Domain Expertise: *\"[Exact Domain_Expertise string]\"* | Qualifications: `[Qualifications]`\n"
+                "   - **Source Record Reference**: [Insert exact Source_Reference string here, e.g., AE-001 | Supabase: AE_Mock_Dataset (Row 1)]\n"
+                "   - **Sub-Sector & Documented Expertise Field**: Sub-Sector: [Sub_Sector] | Domain Expertise: \"[Exact Domain_Expertise string]\" | Qualifications: [Qualifications]\n"
                 "   - **Documented Match Rationale**: [Explain why the profile matches the requirement, explicitly referencing the documented expertise and sector experience]\n"
                 "   - **Years of Experience & Historical Effectiveness Rating**: [Training_Exp_Yrs] yrs training exp ([Sector_Exp_Yrs] yrs sector exp) | FY25 Rating: [Avg_Rating]/5.0 | ACTA/ACLP: [ACTA_Certified]\n"
                 "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
@@ -229,21 +254,21 @@ if "discovery_analysis" in st.session_state:
     else:
         # ── Direct Source Record Verification Panel (Fixes UAT-005) ──
         with st.expander("📄 View Underlying Source Records for Shortlisted Candidates (Traceability Verification)", expanded=True):
-            st.caption("Direct database extract from `Supabase: AE_Mock_Dataset` supporting the AI match rationale above:")
+            st.caption("Direct database extract from Supabase (AE_Mock_Dataset) supporting the AI match rationale above:")
             ev_cols = st.columns(len(ai_suggestions))
             for idx, c_name in enumerate(ai_suggestions):
                 rec = ae_lookup.get(c_name)
                 if rec:
                     with ev_cols[idx]:
                         with st.container(border=True):
-                            st.markdown(f"**`{rec['Record_ID']}` · {rec['Name']}**")
-                            st.caption(f"Source: `{rec['Source_Table']}`")
+                            st.markdown(f"**{rec['Record_ID']} · {rec['Name']}**")
+                            st.caption(f"Source: {rec['Source_Table']}")
                             st.markdown(f"- **Designation:** {rec['Designation']} ({rec['Agency_or_Org']})")
-                            st.markdown(f"- **Sub-Sector Field:** `{rec['Sub_Sector']}`")
+                            st.markdown(f"- **Sub-Sector Field:** {rec['Sub_Sector']}")
                             st.markdown(f"- **Domain Expertise Field:** *{rec['Expertise']}*")
                             st.markdown(f"- **Qualifications:** {rec['Qualifications']}")
                             st.markdown(f"- **Sector / Training Exp:** {rec['Sector_Exp_Yrs']} yrs / {rec['Training_Exp_Yrs']} yrs")
-                            st.markdown(f"- **ACTA/ACLP:** `{rec['ACTA_Certified']}` | **Rating:** ⭐ {rec['Avg_Rating']}/5.0")
+                            st.markdown(f"- **ACTA/ACLP:** {rec['ACTA_Certified']} | **Rating:** ⭐ {rec['Avg_Rating']}/5.0")
 
         # Prompt user to confirm or proceed
         st.markdown("---")
@@ -321,9 +346,9 @@ with st.expander("👤 Browse Adult Educator Profiles Directory", expanded=False
         with st.container(border=True):
             col_main, col_stats = st.columns([3, 1])
             with col_main:
-                st.markdown(f"### `{profile['Record_ID']}` · {profile['Name']}")
+                st.markdown(f"### {profile['Record_ID']} · {profile['Name']}")
                 st.markdown(f"**{profile['Designation']}** · *{profile['Agency_or_Org']}*")
-                st.markdown(f"**🏷️ Sub-Sector:** `{profile['Sub_Sector']}`")
+                st.markdown(f"**🏷️ Sub-Sector:** {profile['Sub_Sector']}")
                 st.markdown(f"**🎯 Specialisation / Expertise:** {profile['Expertise']}")
                 st.caption(f"🎓 Qualifications: {profile['Qualifications']} | ACTA/ACLP: {profile['ACTA_Certified']} | Source: {profile['Source_Table']}")
             with col_stats:
