@@ -31,6 +31,28 @@ def get_col(row, possible_keys, default_val):
             return row_lower[k_low]
     return default_val
 
+def infer_subsector(raw_sector, expertise_str):
+    if raw_sector and raw_sector not in ("Social Service", "General", "Unknown"):
+        return raw_sector
+    exp_low = str(expertise_str).lower()
+    if "youth" in exp_low:
+        return "Children & Youth"
+    if "family strengthening" in exp_low or "parenting" in exp_low:
+        return "Family"
+    if "mental health" in exp_low or "suicide" in exp_low:
+        return "Mental Health & Caregiving"
+    if "autism" in exp_low or "positive behaviour" in exp_low or "inclusion" in exp_low:
+        return "Disability"
+    if "volunteer" in exp_low:
+        return "Volunteer Management"
+    if "foster" in exp_low or "attachment" in exp_low:
+        return "Foster Parents"
+    if "leadership" in exp_low or "inter-agency" in exp_low:
+        return "Cross-Sector Leadership"
+    if "safeguarding" in exp_low or "reflective practice" in exp_low:
+        return "MOD (Practice & Ethics)"
+    return raw_sector or "Social Service"
+
 # ── 2. Cloud Database Loader (Supabase External Storage) ────────
 @st.cache_data(ttl=600)
 def load_all_ae_records():
@@ -46,8 +68,9 @@ def load_all_ae_records():
         name_val = get_col(row, ["Full Name", "Name", "Trainer Name", "AE Name"], "Unknown")
         org_val = get_col(row, ["Organisation", "Organization", "Agency", "Agency_or_Org"], "Social Service Institute")
         desig_val = get_col(row, ["Designation", "Role", "Title"], "Adult Educator")
-        subsector_val = get_col(row, ["Sub-Sector", "Sub_Sector", "Sub Sector", "Subsector", "Sector"], "Social Service")
         exp_val = get_col(row, ["Domain Expertise", "Area of Specialisation / Core Expertise", "Expertise", "Specialisation"], "General Facilitation")
+        raw_subsector = get_col(row, ["Sub-Sector", "Sub_Sector", "Sub Sector", "Subsector", "Sector"], "")
+        subsector_val = infer_subsector(raw_subsector, exp_val)
         qual_val = get_col(row, ["Highest Academic Qualifications", "Qualifications", "Academic Qualifications"], "Professional Degree")
         sec_yrs = get_col(row, ["Years in Social Service Sector/Relevant Sector", "Sector_Exp_Yrs", "Sector Experience"], "10")
         trn_yrs = get_col(row, ["Training Experience", "Training_Exp_Yrs", "Years of Training Experience"], "5")
@@ -168,12 +191,12 @@ if find_clicked:
                 "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
                 "Your role is decision support ONLY. You MUST strictly separate Domain Classification from Evidence Matching using this 3-Step Workflow:\n\n"
                 "DATASET SCHEMA & TEMPORAL BOUNDARY NOTICE:\n"
-                "- The AE profile database (`AE_Mock_Dataset`) records `FY25_Course_Runs` (number of runs in FY25, ranging from ~4 to 16 runs) and `FY25_Avg_Rating`. It does NOT contain complete FY2026 training-run totals.\n"
-                "- Before making any definitive claim about 2026 training runs, phd/doctoral degrees, or specific credentials, check whether the dataset actually documents that field.\n\n"
+                "- The AE profile database (AE_Mock_Dataset) records FY25_Course_Runs (number of runs in FY25, ranging from 4 to 16 runs) and FY25_Avg_Rating. It does NOT contain complete FY2026 training-run totals.\n"
+                "- Before making any definitive claim about 2026 training runs, PhD/doctoral degrees, or specific credentials, check whether the dataset actually documents that field.\n\n"
                 "STEP 1 — IS THE TRAINING DOMAIN RELEVANT TO SOCIAL SERVICES?\n"
                 "- Core Social Service Domains in Scope: Disability & Special Needs, Children & Youth, Family, Mental Health & Caregiving (including eldercare, dementia, palliative care, bereavement), Volunteer Management, Foster Parents, Social Service Leadership, and Professional Practice/Ethics (MOD).\n"
                 "- IF OUT OF SCOPE (strictly non-social-service technical, industrial, or corporate fields like Civil Engineering, Aviation Flight Dynamics, Crypto Trading, Commercial Real Estate):\n"
-                "  1. Start your response with the exact tag: `STATUS: NO_RELEVANT_DOMAIN`\n"
+                "  1. Start your response with the plain text tag (NO backticks): STATUS: NO_RELEVANT_DOMAIN\n"
                 "  2. State clearly that the requested domain is outside the social service training scope.\n"
                 "  3. Do NOT name or recommend any candidates.\n"
                 "- IF IN SCOPE: Proceed to Step 2.\n\n"
@@ -181,17 +204,17 @@ if find_clicked:
                 "- Break down all mandatory conditions stated by the officer (e.g., specific domain/population experience, specific academic qualification such as PhD/Master's, minimum years of training/sector experience, or minimum number of SSI training runs in a specific year like 2026).\n"
                 "- Check the 100 AE records to see if any candidates simultaneously satisfy ALL stated mandatory requirements.\n\n"
                 "STEP 3 — RETURN VERIFIED MATCHES, PARTIAL MATCHES, OR INSUFFICIENT EVIDENCE\n"
-                "Case A — One or more AEs meet the core requirements (`STATUS: VERIFIED_MATCH`):\n"
-                "- Start your response with the exact tag: `STATUS: VERIFIED_MATCH`\n"
-                "- Present the top 2 to 3 matching Adult Educators using the candidate format below.\n\n"
-                "Case B — Domain is relevant to social services, but NO candidate simultaneously meets all mandatory requirements (`STATUS: PARTIAL_MATCH`):\n"
-                "- Start your response with the exact tag: `STATUS: PARTIAL_MATCH`\n"
-                "- Immediately output this structured notice at the top:\n"
-                "  **⚠️ No Adult Educators were verified as meeting all specified requirements based on the available records.**\n"
+                "Case A — One or more AEs meet the core requirements:\n"
+                "- Start your response with the plain text tag (NO backticks): STATUS: VERIFIED_MATCH\n"
+                "- Present the top 2 to 3 matching Adult Educators from the matching Sub-Sector using the candidate format below.\n\n"
+                "Case B — Domain is relevant to social services, but NO candidate simultaneously meets all mandatory requirements:\n"
+                "- Start your response with the plain text tag (NO backticks): STATUS: PARTIAL_MATCH\n"
+                "- Immediately output this structured notice at the top (do NOT put backticks around it):\n"
+                "  ⚠️ **No Adult Educators were verified as meeting all specified requirements based on the available records.**\n"
                 "  The requested expertise is relevant to social services. However, the available records do not establish a candidate who simultaneously meets [list the exact combination of requirements, e.g., the required youth experience, PhD qualification, and minimum 20 SSI training runs in 2026].\n"
-                "  *Dataset Note:* Please note that `AE_Mock_Dataset` only documents FY25 training run counts (`FY25_Course_Runs`) and does not contain complete FY2026 training-run totals.\n"
+                "  *Dataset Note:* Please note that AE_Mock_Dataset only documents FY25 training run counts (FY25_Course_Runs) and does not contain complete FY2026 training-run totals.\n"
                 "  You may revise the criteria or review the partially matching profiles below. Any missing information should be verified separately.\n"
-                "- Below that notice, add the heading `### Partially Matching Profiles (For Optional Review)` and list the 2 to 3 closest domain candidates using the candidate format below, clearly detailing which requirements are met and which are unmet under `Information Gaps`.\n\n"
+                "- Below that notice, add the heading `### Partially Matching Profiles (For Optional Review)` and list the 2 to 3 closest candidates **from the requested Sub-Sector** (e.g., if the query asks for youth experience, surface candidates from the `Children & Youth` sub-sector such as Tan Wei Ming, Siti Hajar Ahmad, or Farah Ismail) using the candidate format below, clearly detailing which requirements are met and which are unmet under `Information Gaps`.\n\n"
                 "CANDIDATE OUTPUT FORMAT (Use for both Verified Matches and Partially Matching Profiles):\n"
                 "Candidate X: [Exact Full Name] ([Record_ID])\n"
                 "- **Candidate Name, Designation & Organisation**: [Exact Full Name], [Designation] ([Organisation])\n"
@@ -226,13 +249,16 @@ if find_clicked:
                         
                     st.session_state["match_status"] = match_status
                     
-                    # Clean status tags from display text
+                    # Clean status tags AND any stray leading backticks/dots from display text
                     clean_text = (
                         analysis_text
+                        .replace("`STATUS: NO_RELEVANT_DOMAIN`", "")
+                        .replace("`STATUS: PARTIAL_MATCH`", "")
+                        .replace("`STATUS: VERIFIED_MATCH`", "")
                         .replace("STATUS: NO_RELEVANT_DOMAIN", "")
                         .replace("STATUS: PARTIAL_MATCH", "")
                         .replace("STATUS: VERIFIED_MATCH", "")
-                        .lstrip(". \n")
+                        .lstrip("`. \n\t")
                         .strip()
                     )
                     st.session_state["discovery_analysis"] = clean_text
@@ -294,7 +320,9 @@ if "discovery_analysis" in st.session_state:
         )
 
     with st.container(border=True):
-        st.markdown(st.session_state["discovery_analysis"])
+        # Always strip any leading backticks before rendering
+        display_md = st.session_state["discovery_analysis"].lstrip("`. \n\t")
+        st.markdown(display_md)
         
     if ai_suggestions:
         # ── Direct Source Record Verification Panel (Fixes UAT-005) ──
