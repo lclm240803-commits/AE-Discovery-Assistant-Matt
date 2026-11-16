@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import re
 from openai import OpenAI
 from supabase import create_client
 from utility import check_password
@@ -113,6 +114,18 @@ def get_trainer_courses(trainer_name):
             })
     return matched_courses
 
+# Post-processor to guarantee colored badges in table and text
+def format_classification_badges(text):
+    # Remove accidental square brackets around candidate names in table headers
+    text = re.sub(r"\[([A-Za-z\s]+\(AE-\d+\))\]", r"\1", text)
+    # Normalize any plain text labels to include the colored circle icons
+    text = re.sub(r"(?<!🟢\s)(?<!🟢)\bDocumented\b", "🟢 Documented", text)
+    text = re.sub(r"(?<!🟡\s)(?<!🟡)\bRelated evidence\b", "🟡 Related evidence", text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<!⚪\s)(?<!⚪)\bNot documented\b", "⚪ Not documented", text, flags=re.IGNORECASE)
+    # Clean up any accidental double icons
+    text = text.replace("🟢 🟢", "🟢").replace("🟡 🟡", "🟡").replace("⚪ ⚪", "⚪")
+    return text
+
 # ── 3. Active Context & Selection ─────────────────────────────
 officer_requirement = st.session_state.get("last_requirement", "")
 shortlisted = st.session_state.get("selected_candidates", [])
@@ -225,44 +238,12 @@ else:
                 st.error("OpenAI API Key not found. Please verify OPENAI_API_KEY in Streamlit Cloud Settings → Secrets.")
             else:
                 client = OpenAI(api_key=api_key)
+                # Build exact header columns for the selected AEs
+                header_cols = " | ".join([f"{name} ({trainer_map[name]['Record_ID']})" for name in selected_aes if name in trainer_map])
+                
                 system_prompt = (
                     "You are an objective decision-support assistant for public social service training officers.\n"
                     "Your task is to evaluate and compare the shortlisted Adult Educators side-by-side against the officer's training requirements using a strict 3-tier evidence classification standard.\n\n"
-                    "STRICT EVIDENCE CLASSIFICATION DEFINITIONS:\n"
-                    "- **Documented**: Direct, explicit evidence in the AE's profile (e.g., stated Domain Expertise, Sub-Sector, or Academic Qualifications) directly establishes the requirement.\n"
-                    "- **Related evidence**: Relevant or adjacent experience exists (e.g., conducting related course runs, holding ACTA/ACLP pedagogical certification, or having related skills like motivational interviewing), but it does NOT automatically establish a formal qualification or guaranteed competence in the specific requirement (for example, conducting a classroom course or holding ACTA provides related evidence for practice-based facilitation, and motivational interviewing provides related evidence for counselling, but neither automatically establishes formal clinical counselling qualification).\n"
-                    "- **Not documented**: Available profile and engagement records do not establish the requirement.\n\n"
-                    "REQUIRED OUTPUT FORMAT:\n"
-                    "### 1. Training Requirement Alignment Matrix\n"
-                    "- Break the officer's training requirement down into 3 to 5 distinct evaluation rows (e.g., Target Population / Sector Experience, Specific Domain / Clinical / Counselling Background, Practice-Based Facilitation Competence, Pedagogical Certification / Tenure).\n"
-                    "- Output a clean Markdown table with columns: `Requirement` | `[Candidate 1 Name (Record_ID)]` | `[Candidate 2 Name (Record_ID)]` (and Candidate 3 if present).\n"
-                    "- Every cell under a candidate column MUST contain ONLY one of the three exact classification labels: **`Documented`**, **`Related evidence`**, or **`Not documented`**.\n\n"
-                    "### 2. Classification Explanations & Source Evidence Traceability\n"
-                    "- For each requirement row in the table, provide a concise bulleted explanation justifying the classification assigned to each candidate.\n"
-                    "- Explicitly cite the candidate's `Record_ID` (e.g., AE-001), exact `Expertise` or `Qualifications` field, and specific `Engagement_ID` (e.g., ENG-0071) or `Course_Title` where applicable.\n"
-                    "- Clearly explain why any `Related evidence` classification is partial rather than fully `Documented`.\n\n"
-                    "### 3. Key Trade-Offs & Information Gaps to Verify\n"
-                    "- Summarize key trade-offs across the candidates and list specific questions or unverified areas the training officer should confirm before making an engagement decision.\n"
-                    "- Maintain a neutral decision-support tone: NEVER declare a 'winner', 'best candidate', or 'recommended choice'."
-                )
-
-                with st.spinner("Evaluating candidate evidence and building classification matrix..."):
-                    try:
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": f"Candidate Records & Engagement History:\n{context_str}\n\nOfficer Training Requirement:\n{req_context}"}
-                            ],
-                            temperature=0.1
-                        )
-                        st.session_state["last_comparison_text"] = response.choices[0].message.content
-                    except Exception as e:
-                        st.error(f"Error calling LLM: {e}")
-
-        if "last_comparison_text" in st.session_state:
-            with st.container(border=True):
-                st.markdown(st.session_state["last_comparison_text"])
-
-st.markdown("---")
-st.caption("Adult Educator Discovery & Comparison Assistant · AI Champions Bootcamp 2026")
+                    "STRICT EVIDENCE CLASSIFICATION DEFINITIONS (YOU MUST INCLUDE THE COLORED CIRCLE ICON EVERY TIME):\n"
+                    "- **🟢 Documented**: Direct, explicit evidence in the AE's profile (stated Domain Expertise, Sub-Sector, years of experience, or Academic Qualifications) directly establishes the requirement.\n"
+                    "- **🟡 Related evidence**: Relevant or adjacent experience exists (such as past course runs conducted, blended/classroom delivery modes, holding ACTA/ACLP certification, or adjacent skills like motivational interviewing), but it does NOT automatically establish a formal qualification or guaranteed competence in the specific requirement. IMPORTANT: Conducting classroom/blended courses provides `🟡 Related evidence` (NOT `🟢 Documented`) for practice-based facilitation competence. Similarly, motivational interviewing or
