@@ -2,8 +2,8 @@ name: Keep Supabase Alive
 
 on:
   schedule:
-    # Runs at 00:00 UTC on Mondays and Thursdays (every 3-4 days)
-    - cron: '0 0 * * 1,4'
+    # Runs EVERY DAY at 03:15 UTC (11:15 AM SGT) to avoid peak-hour drops
+    - cron: '15 3 * * *'
   workflow_dispatch:
 
 jobs:
@@ -12,4 +12,10 @@ jobs:
     steps:
       - name: Ping Supabase REST API
         run: |
-          curl -i -X GET "https://omcpabdkgeevdrvoomww.supabase.co/rest/v1/AE_Mock_Dataset?select=count" -H "apikey: ${{ secrets.SUPABASE_KEY }}"
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X GET "https://omcpabdkgeevdrvoomww.supabase.co/rest/v1/AE_Mock_Dataset?select=*&limit=1" \
+               -H "apikey: ${{ secrets.SUPABASE_KEY }}")
+          echo "HTTP Status: $response"
+          if [ "$response" -ne 200 ]; then
+            echo "Ping failed with status $response"
+            exit 1
+          fi
