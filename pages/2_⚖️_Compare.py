@@ -116,13 +116,10 @@ def get_trainer_courses(trainer_name):
 
 # Post-processor to guarantee colored badges in table and text
 def format_classification_badges(text):
-    # Remove accidental square brackets around candidate names in table headers
     text = re.sub(r"\[([A-Za-z\s]+\(AE-\d+\))\]", r"\1", text)
-    # Normalize any plain text labels to include the colored circle icons
     text = re.sub(r"(?<!🟢\s)(?<!🟢)\bDocumented\b", "🟢 Documented", text)
     text = re.sub(r"(?<!🟡\s)(?<!🟡)\bRelated evidence\b", "🟡 Related evidence", text, flags=re.IGNORECASE)
     text = re.sub(r"(?<!⚪\s)(?<!⚪)\bNot documented\b", "⚪ Not documented", text, flags=re.IGNORECASE)
-    # Clean up any accidental double icons
     text = text.replace("🟢 🟢", "🟢").replace("🟡 🟡", "🟡").replace("⚪ ⚪", "⚪")
     return text
 
@@ -192,7 +189,7 @@ else:
                     st.markdown("---")
                     st.markdown(f"**🎯 Specialisation:**\n{profile['Expertise']}")
                     st.markdown(f"**🎓 Academic Qualifications:**\n{profile['Qualifications']}")
-                    st.markdown(f"**📜 ACTA/ACLP:** `{profile['ACTA_Certified']}`")
+                    st.markdown(f"**📜 ACTA/ACLP:** `{profile['ACTA_Certified']}` *(Equal WSQ Recognition)*")
                     st.markdown(f"**🏢 Sector Exp:** {profile['Sector_Exp_Yrs']} yrs")
 
                     st.markdown("---")
@@ -238,7 +235,6 @@ else:
                 st.error("OpenAI API Key not found. Please verify OPENAI_API_KEY in Streamlit Cloud Settings → Secrets.")
             else:
                 client = OpenAI(api_key=api_key)
-                # Build exact header columns for the selected AEs
                 header_cols = " | ".join([f"{name} ({trainer_map[name]['Record_ID']})" for name in selected_aes if name in trainer_map])
                 
                 system_prompt = (
@@ -248,6 +244,11 @@ else:
                     "- **🟢 Documented**: Direct, explicit evidence in the AE's profile (stated Domain Expertise, Sub-Sector, years of experience, or Academic Qualifications) directly establishes the requirement.\n"
                     "- **🟡 Related evidence**: Relevant or adjacent experience exists (such as past course runs conducted, blended/classroom delivery modes, holding ACTA/ACLP certification, or adjacent skills like motivational interviewing), but it does NOT automatically establish a formal qualification or guaranteed competence in the specific requirement. IMPORTANT: Conducting classroom/blended courses provides `🟡 Related evidence` (NOT `🟢 Documented`) for practice-based facilitation competence. Similarly, motivational interviewing or general social work provides `🟡 Related evidence` for counselling unless the AE holds a formal Counselling degree.\n"
                     "- **⚪ Not documented**: Available profile and engagement records do not establish the requirement (e.g., when a specific qualification, certification like ACTA/ACLP='no', or specialized skill is absent).\n\n"
+                    "CRITICAL RULE ON ACTA AND ACLP EQUIVALENCE:\n"
+                    "- In Singapore's WSQ Adult Education framework, **ACTA** (Advanced Certificate in Training and Assessment) and **ACLP** (Advanced Certificate in Learning and Performance) carry **100% EQUAL recognition and standing**.\n"
+                    "- NEVER rank or treat ACTA as superior to ACLP, or ACLP as superior to ACTA.\n"
+                    "- If one candidate holds `ACTA` and another holds `ACLP`, classify both identically as `🟢 Documented` for Adult Education Certification and state explicitly that both hold equivalent national WSQ adult educator certifications.\n"
+                    "- Only flag a certification difference if a candidate has `no` / `Not documented` for ACTA/ACLP.\n\n"
                     "REQUIRED OUTPUT FORMAT:\n"
                     "### 1. Training Requirement Alignment Matrix\n"
                     "- Break the evaluation down into 4 distinct rows: (1) Target Population / Sub-Sector Experience, (2) Domain / Clinical / Counselling Background, (3) Practice-Based Facilitation Competence, and (4) Adult Education Certification (ACTA/ACLP) & Tenure.\n"
@@ -258,7 +259,7 @@ else:
                     "- Explicitly cite the candidate's `Record_ID` (e.g., AE-004), exact `Expertise` or `Qualifications` field, and specific `Engagement_ID` (e.g., ENG-0001) or `Course_Title` where applicable.\n"
                     "- Clearly explain why any `🟡 Related evidence` classification is partial rather than fully `🟢 Documented`.\n\n"
                     "### 3. Key Trade-Offs & Information Gaps to Verify\n"
-                    "- Summarize key trade-offs across the candidates and list specific questions or unverified areas the training officer should confirm before making an engagement decision.\n"
+                    "- Summarize key trade-offs across the candidates (e.g., years of sector experience vs. training experience, academic background, or presence vs. absence of ACTA/ACLP certification) and list specific questions the training officer should confirm before making an engagement decision.\n"
                     "- Maintain a neutral decision-support tone: NEVER declare a 'winner', 'best candidate', or 'recommended choice'."
                 )
 
