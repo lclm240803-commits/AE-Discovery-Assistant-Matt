@@ -30,8 +30,10 @@ def load_all_ae_records():
     response = supabase.table("AE_Mock_Dataset").select("*").execute()
     records = []
     
-    for row in response.data:
+    for idx, row in enumerate(response.data, start=1):
         records.append({
+            "Record_ID": f"AE-{idx:03d}",
+            "Source_Table": "Supabase: AE_Mock_Dataset",
             "Name": row.get("Full Name") or "Unknown",
             "Agency_or_Org": row.get("Organisation") or "Social Service Institute",
             "Designation": row.get("Designation") or "Adult Educator",
@@ -52,6 +54,7 @@ except Exception as e:
     ae_records = []
 
 candidate_options = [r["Name"] for r in ae_records]
+ae_lookup = {r["Name"]: r for r in ae_records}
 
 # ── Session State Management (Cross-Page Persistent) ─────────
 if "selected_candidates" not in st.session_state:
@@ -99,7 +102,7 @@ with col_info:
     with st.container(border=True):
         st.markdown("**Cloud Database Scope**")
         st.metric("Total AE Profiles", len(ae_records))
-        st.caption("Live PostgreSQL records fetched via Supabase API.")
+        st.caption("Live PostgreSQL records fetched via Supabase API (`AE_Mock_Dataset`).")
 
 # ── 4. Retrieval & Analysis Execution ─────────────────────────
 if find_clicked:
@@ -108,12 +111,15 @@ if find_clicked:
     else:
         st.session_state["last_requirement"] = user_requirement
         
-        # Prepare all concise profiles for the LLM
+        # Prepare all concise profiles with explicit Record_IDs for the LLM
         compact_profiles = [
             {
+                "Record_ID": r["Record_ID"],
                 "Name": r["Name"],
+                "Designation": r["Designation"],
+                "Organisation": r["Agency_or_Org"],
                 "Sub_Sector": r["Sub_Sector"],
-                "Expertise": r["Expertise"],
+                "Domain_Expertise": r["Expertise"],
                 "Qualifications": r["Qualifications"],
                 "Sector_Exp_Yrs": r["Sector_Exp_Yrs"],
                 "Training_Exp_Yrs": r["Training_Exp_Yrs"],
@@ -132,24 +138,26 @@ if find_clicked:
             
             system_prompt = (
                 "You are the Adult Educator (AE) Discovery Assistant for public social service training officers.\n"
-                "Your role is decision support ONLY. Follow these strict domain & grounding rules:\n\n"
+                "Your role is decision support ONLY. Follow these strict domain & evidence-grounding rules:\n\n"
                 "RULE 1: CORE SOCIAL SERVICE DOMAINS (NEVER REJECT)\n"
                 "- The database contains social service Adult Educators across key sectors:\n"
                 "  1. Disability & Special Needs (Intellectual disability, autism spectrum, physical/sensory disability, assistive technology, inclusive employment, SPED)\n"
                 "  2. Children & Youth (Youth-at-risk, trauma-informed practice, delinquency, school guidance, casework)\n"
                 "  3. Family (Parenting, family violence, marital counselling, caregiver engagement)\n"
                 "  4. Mental Health & Caregiving (Crisis intervention, suicide prevention, eldercare, dementia, palliative care, bereavement, caregiver burnout)\n"
-                "  5. Volunteer Management & Sector Leadership\n"
+                "  5. Volunteer Management, Foster Parents & Sector Leadership\n"
                 "- Any query mentioning disability, special needs, youths, seniors, family, or caregiving IS A VALID SOCIAL SERVICE TOPIC. NEVER state that these are technical or commercial disciplines.\n\n"
-                "RULE 2: CANDIDATE MATCHING & GROUNDING\n"
+                "RULE 2: CANDIDATE MATCHING & EXPLICIT SOURCE CITATION\n"
                 "- Search the provided AE records and identify the 2 to 3 most relevant Adult Educators.\n"
+                "- You MUST explicitly cite the candidate's Record_ID (e.g. AE-004) and quote their exact 'Domain_Expertise' and 'Qualifications' fields so the officer can trace every claim back to the source record.\n"
                 "- If the user specifies an experience tenure (e.g. 5 years or 20 years), surface the closest matching trainers in that domain and transparently explain any variance under 'Documented Match Rationale' and 'Information Gaps'.\n"
                 "- Format each candidate strictly as:\n"
-                "   Candidate X: [Exact Full Name]\n"
-                "   - **Candidate Name & Designation**: [Exact Full Name], [Designation]\n"
-                "   - **Sub-Sector Alignment**: [Alignment]\n"
-                "   - **Documented Match Rationale**: [Evidence-based justification from profile]\n"
-                "   - **Years of Training Experience & Historical Effectiveness Rating**: [Exp], [Rating]\n"
+                "   Candidate X: [Exact Full Name] ([Record_ID])\n"
+                "   - **Candidate Name, Designation & Organisation**: [Exact Full Name], [Designation] ([Organisation])\n"
+                "   - **Source Record Reference**: ``\n"
+                "   - **Sub-Sector & Documented Expertise Field**: Sub-Sector: `[Sub_Sector]` | Domain Expertise: *\"[Exact Domain_Expertise string]\"* | Qualifications: `[Qualifications]`\n"
+                "   - **Documented Match Rationale**: [Explain why the profile matches the requirement, explicitly referencing the documented expertise and sector experience]\n"
+                "   - **Years of Experience & Historical Effectiveness Rating**: [Training_Exp_Yrs] yrs training exp ([Sector_Exp_Yrs] yrs sector exp) | FY25 Rating: [Avg_Rating]/5.0 | ACTA/ACLP: [ACTA_Certified]\n"
                 "   - **Information Gaps**: [Gaps or 'Not documented in available records']\n\n"
                 "RULE 3: STRICT REJECTION FOR NON-HUMAN SERVICES ONLY\n"
                 "- ONLY if the user's query asks for an entirely unrelated, non-social-service industrial or corporate field (e.g., Civil Engineering, Machine Learning Engineering, Aviation Flight Dynamics, Mechanical Construction, Forex/Crypto Trading, Commercial Real Estate Sales):\n"
@@ -161,7 +169,7 @@ if find_clicked:
                 "- Never declare any candidate as 'the best' or 'winner'."
             )
 
-            with st.spinner("Analyzing AE profiles across all records..."):
+            with st.spinner("Analyzing AE profiles and grounding source evidence..."):
                 try:
                     response = client.chat.completions.create(
                         model="gpt-4o-mini",
@@ -196,6 +204,9 @@ if find_clicked:
                         st.session_state["discover_picker"] = top_matches
                         if "compare_picker" in st.session_state:
                             st.session_state["compare_picker"] = top_matches
+                    else:
+                        st.session_state["selected_candidates"] = []
+                        st.session_state["discover_picker"] = []
                     
                     st.rerun()
 
@@ -216,6 +227,24 @@ if "discovery_analysis" in st.session_state:
     if not ai_suggestions:
         st.warning("⚠️ **No matching Adult Educators found in the records for these criteria.** The requested domain is outside social service records. Try adjusting your requirements (e.g., searching for *Children & Youth*, *Family*, *Disability*, or *Mental Health*), or manually pick candidates below.")
     else:
+        # ── Direct Source Record Verification Panel (Fixes UAT-005) ──
+        with st.expander("📄 View Underlying Source Records for Shortlisted Candidates (Traceability Verification)", expanded=True):
+            st.caption("Direct database extract from `Supabase: AE_Mock_Dataset` supporting the AI match rationale above:")
+            ev_cols = st.columns(len(ai_suggestions))
+            for idx, c_name in enumerate(ai_suggestions):
+                rec = ae_lookup.get(c_name)
+                if rec:
+                    with ev_cols[idx]:
+                        with st.container(border=True):
+                            st.markdown(f"**`{rec['Record_ID']}` · {rec['Name']}**")
+                            st.caption(f"Source: `{rec['Source_Table']}`")
+                            st.markdown(f"- **Designation:** {rec['Designation']} ({rec['Agency_or_Org']})")
+                            st.markdown(f"- **Sub-Sector Field:** `{rec['Sub_Sector']}`")
+                            st.markdown(f"- **Domain Expertise Field:** *{rec['Expertise']}*")
+                            st.markdown(f"- **Qualifications:** {rec['Qualifications']}")
+                            st.markdown(f"- **Sector / Training Exp:** {rec['Sector_Exp_Yrs']} yrs / {rec['Training_Exp_Yrs']} yrs")
+                            st.markdown(f"- **ACTA/ACLP:** `{rec['ACTA_Certified']}` | **Rating:** ⭐ {rec['Avg_Rating']}/5.0")
+
         # Prompt user to confirm or proceed
         st.markdown("---")
         with st.container(border=True):
@@ -249,7 +278,6 @@ st.markdown("---")
 st.subheader("3. Shortlist Candidates for Comparison")
 st.caption("Selected candidates will be carried over to the **2 ⚖️ Compare** page.")
 
-# Ensure discover_picker has valid items
 current_selected = [
     name for name in st.session_state.get("selected_candidates", []) if name in candidate_options
 ]
@@ -277,24 +305,27 @@ st.markdown("---")
 with st.expander("👤 Browse Adult Educator Profiles Directory", expanded=False):
     st.caption("Search or preview trainer credentials from the synthetic knowledge base.")
     
-    search_filter = st.text_input("Filter profiles by name or keyword:", placeholder="e.g. Disability, Youth, Trauma...")
+    search_filter = st.text_input("Filter profiles by name, Record ID, or keyword:", placeholder="e.g. AE-001, Disability, Youth, Trauma...")
     
     displayed_records = ae_records
     if search_filter:
         displayed_records = [
             r for r in ae_records
-            if search_filter.lower() in r["Name"].lower() or search_filter.lower() in r["Expertise"].lower() or search_filter.lower() in r["Sub_Sector"].lower()
+            if search_filter.lower() in r["Name"].lower()
+            or search_filter.lower() in r["Record_ID"].lower()
+            or search_filter.lower() in r["Expertise"].lower()
+            or search_filter.lower() in r["Sub_Sector"].lower()
         ]
 
     for profile in displayed_records[:8]:
         with st.container(border=True):
             col_main, col_stats = st.columns([3, 1])
             with col_main:
-                st.markdown(f"### {profile['Name']}")
+                st.markdown(f"### `{profile['Record_ID']}` · {profile['Name']}")
                 st.markdown(f"**{profile['Designation']}** · *{profile['Agency_or_Org']}*")
                 st.markdown(f"**🏷️ Sub-Sector:** `{profile['Sub_Sector']}`")
                 st.markdown(f"**🎯 Specialisation / Expertise:** {profile['Expertise']}")
-                st.caption(f"🎓 Qualifications: {profile['Qualifications']} | ACTA/ACLP: {profile['ACTA_Certified']}")
+                st.caption(f"🎓 Qualifications: {profile['Qualifications']} | ACTA/ACLP: {profile['ACTA_Certified']} | Source: {profile['Source_Table']}")
             with col_stats:
                 st.metric("Avg Effectiveness", f"⭐ {profile['Avg_Rating']}/5.0")
                 st.metric("Training Exp.", f"{profile['Training_Exp_Yrs']} yrs")
