@@ -1,11 +1,13 @@
 import streamlit as st
 from utility import check_password
+
 st.set_page_config(
     page_title="Methodology - AE Discovery Assistant",
     page_icon="🛠️",
     layout="wide"
 )
 
+# Enforce access gatekeeper
 if not check_password():
     st.stop()
 
@@ -14,7 +16,7 @@ st.markdown("---")
 
 st.markdown(
     """
-    This page details the technical architecture, data processing pipeline, prompt engineering 
+    This page details the technical architecture, cloud database retrieval pipeline, prompt engineering 
     techniques, and safety guardrails powering the **AE Discovery & Comparison Assistant**.
     """
 )
@@ -23,8 +25,9 @@ st.markdown(
 st.header("1. Use Case 1: Semantic Discovery Architecture")
 st.markdown(
     """
-    Traditional lexical queries fail when domain synonyms differ. Our discovery pipeline uses 
-    **Retrieval-Augmented Generation (RAG)** to connect natural-language requirements with synthetic AE profiles.
+    Traditional keyword filters fail when training requirements use terminology different from profile descriptions. 
+    Our discovery pipeline uses **Retrieval-Augmented Generation (RAG)** backed by **Supabase PostgreSQL** to retrieve 
+    structured Adult Educator records (`AE-001` to `AE-100`) and perform full-context semantic matching and evidence grounding via `gpt-4o-mini`.
     """
 )
 
@@ -34,38 +37,39 @@ digraph DiscoveryFlow {
     rankdir=LR;
     node [shape=box, style="rounded,filled", fillcolor="#F0F4F8", fontname="Helvetica"];
     
-    User [label="Officer Requirement\\n(Free-text prompt)", fillcolor="#D1E8FF"];
-    Extract [label="LLM Requirement\\nExtractor (Prompt 1)"];
-    Embed [label="Text Embeddings\\n(text-embedding-3-small)"];
-    VectorStore [label="Vector Store / Records\\n(Synthetic AE Data)", shape=cylinder, fillcolor="#FFE6CC"];
-    Retriever [label="Top-k Retrieval\\n(Semantic Match)"];
-    GroundedLLM [label="Grounded Synthesis\\n(Prompt 2 + Context)"];
-    Cards [label="Evidence Cards &\\nRelevance Summaries", fillcolor="#D4EDDA"];
+    User [label="Officer Requirement\\n(Natural-Language Input)", fillcolor="#D1E8FF"];
+    SupabaseDB [label="Supabase PostgreSQL\\n(AE_Mock_Dataset: 100 Profiles)", shape=cylinder, fillcolor="#FFE6CC"];
+    Loader [label="Cached API Data Loader\\n(Assigns AE-001 to AE-100 IDs)"];
+    PromptEngine [label="Semantic Matching & Bridging\\n(gpt-4o-mini · temp=0.2)"];
+    Guardrail [label="Domain & Scope Guardrail\\n(In-Scope vs Out-of-Scope Check)"];
+    Output [label="Grounded Shortlist +\\nSource Record Verification Cards", fillcolor="#D4EDDA"];
 
-    User -> Extract -> Embed -> Retriever;
-    VectorStore -> Retriever;
-    Retriever -> GroundedLLM;
-    GroundedLLM -> Cards;
+    SupabaseDB -> Loader;
+    User -> Guardrail;
+    Loader -> PromptEngine;
+    Guardrail -> PromptEngine;
+    PromptEngine -> Output;
 }
 """)
 
 st.markdown(
     """
     **Key Steps in Discovery:**
-    1. **Requirement Extraction:** The raw input is parsed into target population, domain expertise, and facilitation constraints without adding external assumptions.
-    2. **Vector Retrieval:** The extracted query is embedded and matched against pre-indexed synthetic profile chunks using similarity search.
-    3. **Grounded Synthesis:** The model explains why each candidate aligns based *only* on retrieved passages, citing record IDs.
+    1. **Cloud Database Retrieval:** The application queries all 100 structured AE profiles live from Supabase PostgreSQL (`AE_Mock_Dataset`) via the REST API (cached via `@st.cache_data`) and tags each record with a traceable `Record_ID` (`AE-001` to `AE-100`).
+    2. **Semantic Matching & Domain Bridging:** Rather than relying on brittle keyword matching or lossy chunk cutoffs, the structured profiles are passed into `gpt-4o-mini` (`temperature=0.2`), which maps natural-language needs and adjacent care terminology to the relevant social service sub-sectors.
+    3. **Traceable Evidence Grounding:** Each recommended candidate is output alongside their exact `Record_ID`, verbatim `Domain_Expertise` field, and an expandable **Source Record Verification Panel** extracted directly from Supabase.
     """
 )
 
 st.markdown("---")
 
 # 2. Use Case 2 Flowchart & Data Flow
-st.header("2. Use Case 2: Structured Comparison & Gap Analysis")
+st.header("2. Use Case 2: Requirement-Based Comparison & Gap Analysis")
 st.markdown(
     """
-    Once candidates are shortlisted, officers select 2–3 profiles. The system extracts comparable metrics 
-    directly against the initial training context.
+    Once candidates are shortlisted on the Discover page (or selected manually), the system joins their 
+    competency profiles with their historical course engagement records from Supabase to perform a uniform, 
+    three-tier requirement alignment assessment.
     """
 )
 
@@ -75,24 +79,27 @@ digraph ComparisonFlow {
     rankdir=LR;
     node [shape=box, style="rounded,filled", fillcolor="#F0F4F8", fontname="Helvetica"];
     
-    Selected [label="Selected AEs\\n(Session State)", fillcolor="#D1E8FF"];
-    Context [label="Original Requirement\\n(Retained Context)"];
-    FetchRecords [label="Profile & Engagement\\nRecord Aggregator"];
-    CompareLLM [label="Comparison Engine\\n(Prompt Chain 3)"];
-    OutputTable [label="Side-by-Side Matrix +\\nInformation Gaps", fillcolor="#D4EDDA"];
+    Session [label="Shortlisted AEs & Requirement\\n(st.session_state Hand-off)", fillcolor="#D1E8FF"];
+    SupabaseTables [label="Supabase PostgreSQL\\n(AE_Mock_Dataset + AE_Engagement)", shape=cylinder, fillcolor="#FFE6CC"];
+    Joiner [label="Relational Record Joiner\\n(Profile + Past Course Runs)"];
+    Classifier [label="3-Tier Classification Engine\\n(gpt-4o-mini · temp=0.1)"];
+    Matrix [label="Requirement Alignment Matrix +\\nCited Explanations & Gaps", fillcolor="#D4EDDA"];
 
-    Selected -> FetchRecords;
-    Context -> CompareLLM;
-    FetchRecords -> CompareLLM -> OutputTable;
+    Session -> Joiner;
+    SupabaseTables -> Joiner;
+    Joiner -> Classifier -> Matrix;
 }
 """)
 
 st.markdown(
     """
     **Key Steps in Comparison:**
-    1. **Context Retention:** `st.session_state` preserves the original requirement so comparison evaluates fitness for the specific task.
-    2. **Uniform Evaluation Criteria:** Assesses domain fit, sector depth, target audience experience, and evaluation trends.
-    3. **Explicit Gap Detection:** Any missing profile field is strictly labeled **"Not documented in available records"** rather than assumed positive.
+    1. **Relational Evidence Aggregation:** For each selected AE, the system retrieves their profile (`AE_Mock_Dataset`) and cross-references all historical courses taught (`AE_Engagement`, e.g., `ENG-0001`).
+    2. **Three-Tier Requirement Alignment Matrix:** Evaluates candidates across uniform requirement rows using three strict classifications:
+       * 🟢 **Documented:** Direct evidence in the AE's profile or qualifications establishes the requirement.
+       * 🟡 **Related evidence:** Relevant course runs or adjacent experience exist (e.g., classroom delivery or motivational interviewing), but do not automatically establish full formal qualification.
+       * ⚪ **Not documented:** Available records do not establish the requirement.
+    3. **Domain Calibration & Neutral Decision Support:** Recognizes Singapore WSQ adult education standards (treating **ACTA** and **ACLP** as holding equal national recognition) and highlights trade-offs and verification questions without ever declaring a "best" candidate.
     """
 )
 
@@ -107,9 +114,9 @@ with col1:
     st.subheader("Prompt Engineering Techniques")
     st.markdown(
         """
-        * **Delimiter Isolation:** Triple backticks and XML tags separate system instructions from user-provided inputs.
-        * **Few-Shot Grounding:** In-context examples guide the LLM to format responses into structured bullet points with explicit source references.
-        * **Prompt Chaining:** Discovery and comparison are separated into discrete prompt stages to minimize cognitive load and eliminate context drift.
+        * **Structured JSON Context Injection:** Supabase records are serialized into compact JSON objects with explicit `Record_ID` and `Engagement_ID` keys for deterministic field citation.
+        * **Role & Classification Constraints:** Low temperature settings (`0.1`–`0.2`) and strict formatting templates enforce consistent Markdown tables and badge classifications.
+        * **Two-Stage Workflow Separation:** Discovery and Comparison use dedicated, task-specific system prompts connected via `st.session_state`.
         """
     )
 
@@ -117,9 +124,10 @@ with col2:
     st.subheader("Safety & Anti-Exploitation Controls")
     st.markdown(
         """
-        * **No-Invention Directive:** Explicit instructions forbid inferring unstated qualifications, years of experience, or personal attributes.
-        * **No Automatic Winner:** The system is constrained never to output titles like *"Best Candidate"* or *"Winner"*, enforcing officer ownership.
-        * **Prompt Injection Resilience:** Instructions inside documents or user inputs attempting to override base policies (e.g., *"Ignore previous rules"*) are ignored.
+        * **Strict Grounding & Anti-Hallucination:** Explicit rules forbid inventing credentials, experience, or ratings; unverified criteria must be flagged as `⚪ Not documented`.
+        * **Out-of-Scope Domain Rejection:** Non-human-service queries (e.g., civil engineering, aviation, finance) trigger the `NO_RELEVANT_DOMAIN` guardrail rather than forcing arbitrary matches.
+        * **No Automatic Selection:** The assistant is prohibited from naming a "winner" or "best" AE, preserving human officer discretion.
+        * **Access & Credential Security:** Protected by `check_password()` gatekeeper and server-side Streamlit Secrets (`SUPABASE_URL`, `SUPABASE_KEY`, `OPENAI_API_KEY`).
         """
     )
 
