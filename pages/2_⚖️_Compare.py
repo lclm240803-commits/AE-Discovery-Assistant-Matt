@@ -246,4 +246,40 @@ else:
                     "Your task is to evaluate and compare the shortlisted Adult Educators side-by-side against the officer's training requirements using a strict 3-tier evidence classification standard.\n\n"
                     "STRICT EVIDENCE CLASSIFICATION DEFINITIONS (YOU MUST INCLUDE THE COLORED CIRCLE ICON EVERY TIME):\n"
                     "- **🟢 Documented**: Direct, explicit evidence in the AE's profile (stated Domain Expertise, Sub-Sector, years of experience, or Academic Qualifications) directly establishes the requirement.\n"
-                    "- **🟡 Related evidence**: Relevant or adjacent experience exists (such as past course runs conducted, blended/classroom delivery modes, holding ACTA/ACLP certification, or adjacent skills like motivational interviewing), but it does NOT automatically establish a formal qualification or guaranteed competence in the specific requirement. IMPORTANT: Conducting classroom/blended courses provides `🟡 Related evidence` (NOT `🟢 Documented`) for practice-based facilitation competence. Similarly, motivational interviewing or
+                    "- **🟡 Related evidence**: Relevant or adjacent experience exists (such as past course runs conducted, blended/classroom delivery modes, holding ACTA/ACLP certification, or adjacent skills like motivational interviewing), but it does NOT automatically establish a formal qualification or guaranteed competence in the specific requirement. IMPORTANT: Conducting classroom/blended courses provides `🟡 Related evidence` (NOT `🟢 Documented`) for practice-based facilitation competence. Similarly, motivational interviewing or general social work provides `🟡 Related evidence` for counselling unless the AE holds a formal Counselling degree.\n"
+                    "- **⚪ Not documented**: Available profile and engagement records do not establish the requirement (e.g., when a specific qualification, certification like ACTA/ACLP='no', or specialized skill is absent).\n\n"
+                    "REQUIRED OUTPUT FORMAT:\n"
+                    "### 1. Training Requirement Alignment Matrix\n"
+                    "- Break the evaluation down into 4 distinct rows: (1) Target Population / Sub-Sector Experience, (2) Domain / Clinical / Counselling Background, (3) Practice-Based Facilitation Competence, and (4) Adult Education Certification (ACTA/ACLP) & Tenure.\n"
+                    f"- Output a clean Markdown table with exact column headers: `Requirement | {header_cols}` (do NOT put square brackets around candidate names).\n"
+                    "- Every cell under a candidate column MUST use the exact icon + label: **`🟢 Documented`**, **`🟡 Related evidence`**, or **`⚪ Not documented`**.\n\n"
+                    "### 2. Classification Explanations & Source Evidence Traceability\n"
+                    "- For each requirement row in the table, provide a concise bulleted explanation justifying the classification (`🟢 Documented`, `🟡 Related evidence`, or `⚪ Not documented`) assigned to each candidate.\n"
+                    "- Explicitly cite the candidate's `Record_ID` (e.g., AE-004), exact `Expertise` or `Qualifications` field, and specific `Engagement_ID` (e.g., ENG-0001) or `Course_Title` where applicable.\n"
+                    "- Clearly explain why any `🟡 Related evidence` classification is partial rather than fully `🟢 Documented`.\n\n"
+                    "### 3. Key Trade-Offs & Information Gaps to Verify\n"
+                    "- Summarize key trade-offs across the candidates and list specific questions or unverified areas the training officer should confirm before making an engagement decision.\n"
+                    "- Maintain a neutral decision-support tone: NEVER declare a 'winner', 'best candidate', or 'recommended choice'."
+                )
+
+                with st.spinner("Evaluating candidate evidence and building classification matrix..."):
+                    try:
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": f"Candidate Records & Engagement History:\n{context_str}\n\nOfficer Training Requirement:\n{req_context}"}
+                            ],
+                            temperature=0.1
+                        )
+                        raw_output = response.choices[0].message.content
+                        st.session_state["last_comparison_text"] = format_classification_badges(raw_output)
+                    except Exception as e:
+                        st.error(f"Error calling LLM: {e}")
+
+        if "last_comparison_text" in st.session_state:
+            with st.container(border=True):
+                st.markdown(format_classification_badges(st.session_state["last_comparison_text"]))
+
+st.markdown("---")
+st.caption("Adult Educator Discovery & Comparison Assistant · AI Champions Bootcamp 2026")
