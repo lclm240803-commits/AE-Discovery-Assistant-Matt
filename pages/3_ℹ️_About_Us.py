@@ -1,12 +1,16 @@
 import streamlit as st
 from utility import check_password
+
 st.set_page_config(
     page_title="About Us - AE Discovery Assistant",
     page_icon="ℹ️",
     layout="wide"
 )
+
+# Enforce access gatekeeper
 if not check_password():
     st.stop()
+
 st.title("ℹ️ About the AE Discovery & Comparison Assistant")
 st.markdown("---")
 
@@ -14,9 +18,12 @@ st.markdown("---")
 st.header("1. Agency Context & Problem Statement")
 st.markdown(
     """
-    In public social service institutes and agencies (e.g., SSI / NCSS), training coordinators 
-    and officers frequently need to identify suitable **Adult Educators (AEs)** for specialized, 
-    practice-based courses. 
+    At the Social Service Institute (SSI), officers identify and engage Adult Educators to support 
+    the development and delivery of training programmes for the social service sector. This requires 
+    reviewing information across AE profiles, professional qualifications, historical training 
+    engagements and post-course evaluations. As these records contain different types of information, 
+    identifying and comparing potentially relevant AEs can be time-consuming and may require 
+    considerable manual cross-referencing.
     
     **Current Challenges:**
     * **Manual Record Review:** Officers manually cross-reference voluminous curriculum vitae, 
@@ -35,7 +42,7 @@ st.markdown(
     """
     The **AE Discovery & Comparison Assistant** is a proof-of-concept (POC) tool designed to:
     1. **Accelerate Discovery:** Use semantic search (RAG) to surface relevant AE profiles from natural-language descriptions.
-    2. **Ground Every Claim:** Ensure every surfaced capability is tied directly to retrieved records, eliminating hallucinated credentials.
+    2. **Ground AI-Generated Claims:** Retrieve relevant AE records to support AI-generated explanations, improve traceability and reduce the risk of unsupported or hallucinated information.
     3. **Facilitate Objective Comparison:** Allow side-by-side assessment across uniform criteria while explicitly flagging information gaps.
     4. **Preserve Human Discretion:** Act strictly as a decision-support tool—never auto-selecting or declaring a "best" candidate.
     """
@@ -56,20 +63,34 @@ with col2:
     st.write("✅ **In Scope:** Natural-language discovery, multi-profile comparison, gap detection.")
     st.write("❌ **Out of Scope:** Automated booking, performance prediction, or definitive hiring decisions.")
 
-# 4. Data Sources & Privacy
-st.header("4. Data Sources & Privacy Governance")
+# 4. Expected Benefits and Evaluation
+st.header("4. Expected Benefits and Evaluation")
+st.markdown(
+    """
+    | Expected benefit | Suggested evaluation measure |
+    | :--- | :--- |
+    | **Faster AE discovery** | Time taken to identify a shortlist |
+    | **More relevant matching** | Proportion of suggested AEs supported by documented evidence |
+    | **Consistent comparison** | Whether the same requirements are assessed across candidates |
+    | **Improved transparency** | Proportion of AI claims with verifiable supporting records |
+    | **Human oversight** | Whether final engagement decisions remain with officers |
+    """
+)
+
+# 5. Data Sources & Privacy
+st.header("5. Data Sources & Privacy Governance")
 st.markdown(
     """
     * **Synthetic Dataset:** To safeguard officer and instructor privacy in accordance with bootcamp policy, 
-      this prototype uses **100% synthetic AE profiles and engagement records**.
+      this prototype uses **100% synthetic AE profiles, historical training engagement records, and synthetic post-course evaluation records** stored in an external Supabase PostgreSQL database.
     * **Data Schema:** Includes professional domain background, sector experience, service-user groups, 
       facilitation history, and anonymized post-course evaluation ratings.
     * **Confidentiality:** No real-world personal data or restricted civil service credentials are processed.
     """
 )
 
-# 5. Project Team
-st.header("5. Project Team")
+# 6. Project Team
+st.header("6. Project Team")
 st.markdown(
     """
     Developed for the **AI Champions Bootcamp (Project Type 1 / Agency Track)**:
