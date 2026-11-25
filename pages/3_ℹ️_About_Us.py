@@ -94,8 +94,8 @@ st.header("6. Project Team")
 st.markdown(
     """
     Developed for the **AI Champions Bootcamp (Project Type 1 / Agency Track)**:
-    * **Saiful** – Domain Lead & Requirements Engineering
-    * **Matt** – Technical Architecture & Streamlit Engineering
+    * **Saiful Reduwan Bin Mohamed Noor** – Domain Lead & Requirements Engineering
+    * **Leung Chi Lai (Matthew)** – Technical Architecture & Streamlit Engineering
     """
 )
 
